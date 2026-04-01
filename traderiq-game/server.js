@@ -295,10 +295,7 @@ function handleMessage(ws, msg) {
       const team = gameState.teams[info.teamName];
       if (!team) return;
 
-      if (gameState.currentRound === 0) {
-        sendTo(ws, { type: 'error', message: 'Warte auf die erste Runde!' });
-        return;
-      }
+      // Trading is allowed from round 0 (before first dice roll)
       if (gameState.gameEnded) {
         sendTo(ws, { type: 'error', message: 'Das Spiel ist beendet!' });
         return;
@@ -307,6 +304,10 @@ function handleMessage(ws, msg) {
       const prices = getCurrentPrices();
 
       if (msg.tradeType === 'stock') {
+        if (!msg.quantity || msg.quantity < 100 || msg.quantity % 100 !== 0) {
+          sendTo(ws, { type: 'error', message: 'Aktien müssen in 100er-Paketen gehandelt werden!' });
+          return;
+        }
         const price = prices[msg.stock];
         const cost = msg.quantity * price;
 
