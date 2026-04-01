@@ -184,6 +184,8 @@
   .trade-tag { padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
   .trade-tag.buy { background: var(--green-bg); color: var(--green); }
   .trade-tag.sell { background: var(--red-bg); color: var(--red); }
+  .latest-trade { animation: tradeHighlight 1.5s ease-out; }
+  @keyframes tradeHighlight { 0% { background: rgba(232,127,36,0.25); } 100% { background: transparent; } }
 
   .option-chain { margin-top: 12px; }
   .option-row { display: grid; grid-template-columns: 1fr auto 1fr; border-bottom: 1px solid rgba(42,53,72,0.3); }
@@ -250,6 +252,7 @@ let charts = {};
 let teamTab = 'portfolio';
 let selectedChainStock = 'A';
 let orderForm = { type: 'stock', stock: 'A', direction: 'buy', quantity: 100, optionType: 'call', strike: null };
+let pendingTrades = [];
 
 // ====== WEBSOCKET ======
 let ws = null;
@@ -775,28 +778,62 @@ function renderTradeTab(prices, t) {
             <input type="number" min="${orderForm.type === 'option' ? 1 : 100}" step="${orderForm.type === 'option' ? 1 : 100}" value="${orderForm.quantity}" onchange="orderForm.quantity=parseInt(this.value)||(orderForm.type==='option'?1:100)">
           </div>
           <div style="margin-top:8px;">
-            <button class="btn ${orderForm.direction==='buy'?'btn-success':'btn-danger'} btn-large" style="width:100%;" onclick="submitOrder()">
-              ${orderForm.direction==='buy'?'🟢 Kaufen':'🔴 Verkaufen'}
+            <button class="btn btn-outline btn-large" style="width:100%;border-color:${orderForm.direction==='buy'?'var(--green)':'var(--red)'};color:${orderForm.direction==='buy'?'var(--green)':'var(--red)'};" onclick="submitOrder()">
+              ➕ ${orderForm.direction==='buy'?'Kauf':'Verkauf'} hinzufügen
             </button>
           </div>
         </div>
       </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">📋 Order-Vorschau</span></div>
-        ${renderOrderPreview(prices)}
-        <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
-          <div class="card-title" style="margin-bottom:12px;">Verfügbar</div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:var(--text-secondary);">Barmittel</span><strong>${formatCurrency(t.cash)}</strong>
+      <div>
+        <div class="card" style="margin-bottom:12px;">
+          <div class="card-header">
+            <span class="card-title">📋 Trades Vorschau</span>
+            ${pendingTrades.length > 0 ? `<span style="background:var(--orange);color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;">${pendingTrades.length}</span>` : ''}
           </div>
-          ${['A','B','C'].map(s => t.positions[s] > 0 ? `
-            <div style="display:flex;justify-content:space-between;margin-top:4px;">
-              <span style="color:var(--text-secondary);">${STOCKS[s].name}</span><strong>${t.positions[s]} Stk.</strong>
-            </div>` : '').join('')}
+          ${pendingTrades.length === 0 ? `
+            <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.85rem;">
+              Trades über das Formular hinzufügen.<br>Erst nach Bestätigung werden sie ausgeführt.
+            </div>
+          ` : `
+            ${pendingTrades.map((tr, i) => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:0.82rem;">
+                <div style="display:flex;align-items:center;gap:6px;flex:1;">
+                  <span class="trade-tag ${tr.direction}" style="font-size:0.65rem;padding:2px 5px;">${tr.direction==='buy'?'K':'V'}</span>
+                  <strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
+                  <span style="color:var(--text-muted);font-size:0.75rem;">${tr.tradeType==='stock' ? tr.quantity+' Stk.' : tr.quantity+' '+tr.optionType.toUpperCase()}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <strong style="font-size:0.82rem;">${formatCurrency(tr.total)}</strong>
+                  <button onclick="removePendingTrade(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem;padding:0 4px;line-height:1;" title="Entfernen">✕</button>
+                </div>
+              </div>
+            `).join('')}
+            <div style="display:flex;justify-content:space-between;padding:10px 12px;font-size:0.85rem;font-weight:700;background:var(--bg-secondary);">
+              <span>Gesamt</span>
+              <span>${formatCurrency(pendingTrades.reduce((s,tr) => s + (tr.direction==='buy' ? tr.total : -tr.total), 0))}</span>
+            </div>
+            <div style="padding:12px;">
+              <button class="btn btn-success btn-large" style="width:100%;" onclick="confirmAllTrades()">
+                ✅ ${pendingTrades.length} Trade${pendingTrades.length>1?'s':''} bestätigen
+              </button>
+              <button class="btn btn-outline" style="width:100%;margin-top:6px;font-size:0.8rem;" onclick="pendingTrades=[];render()">
+                Alle verwerfen
+              </button>
+            </div>
+          `}
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:var(--text-secondary);font-size:0.85rem;">Barmittel</span><strong style="font-size:0.85rem;">${formatCurrency(t.cash)}</strong>
+            </div>
+            ${['A','B','C'].map(s => t.positions[s] > 0 ? `
+              <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                <span style="color:var(--text-secondary);font-size:0.85rem;">${STOCKS[s].name}</span><strong style="font-size:0.85rem;">${t.positions[s]} Stk.</strong>
+              </div>` : '').join('')}
+          </div>
         </div>
+        ${renderRoundTrades(t)}
       </div>
     </div>
-    ${renderRoundTrades(t)}
   `;
 }
 
@@ -804,30 +841,32 @@ function renderRoundTrades(t) {
   const currentRound = gameData.currentRound;
   const roundTrades = (t.trades || []).filter(tr => tr.round === currentRound);
   if (roundTrades.length === 0) {
-    return `<div class="card" style="grid-column:1/-1;margin-top:0;">
+    return `<div class="card" id="round-trades" style="margin-top:0;">
       <div class="card-header"><span class="card-title">📝 Trades Runde ${currentRound}</span></div>
       <div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.85rem;">Noch keine Trades in dieser Runde</div>
     </div>`;
   }
-  return `<div class="card" style="grid-column:1/-1;margin-top:0;">
+  const totalSpent = roundTrades.reduce((sum, tr) => sum + (tr.direction === 'buy' ? tr.total : -tr.total), 0);
+  return `<div class="card" id="round-trades" style="margin-top:0;">
     <div class="card-header">
       <span class="card-title">📝 Trades Runde ${currentRound}</span>
       <span style="color:var(--text-muted);font-size:0.8rem;">${roundTrades.length} Trade${roundTrades.length>1?'s':''}</span>
     </div>
-    <table class="data-table" style="font-size:0.8rem;">
-      <tr><th>Typ</th><th>Instrument</th><th>Richtung</th><th>Anzahl</th><th>Preis</th><th>Gesamt</th></tr>
-      ${roundTrades.map(tr => `
-        <tr>
-          <td>${tr.type==='stock'?'📈 Aktie':`📋 ${tr.optionType.toUpperCase()}`}</td>
-          <td><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
-            ${tr.type==='option'?`<br><span style="font-size:0.7rem;color:var(--text-muted)">Strike: ${formatCurrency(tr.strike)}</span>`:''}</td>
-          <td><span class="trade-tag ${tr.direction}">${tr.direction==='buy'?'KAUF':'VERKAUF'}</span></td>
-          <td>${tr.quantity}${tr.type==='option'?' Kontr.':' Stk.'}</td>
-          <td>${formatCurrency(tr.price)}</td>
-          <td><strong>${formatCurrency(tr.total)}</strong></td>
-        </tr>
-      `).join('')}
-    </table>
+    ${roundTrades.map((tr, i) => `
+      <div class="round-trade-row${i === roundTrades.length - 1 ? ' latest-trade' : ''}" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="trade-tag ${tr.direction}" style="font-size:0.7rem;padding:2px 6px;">${tr.direction==='buy'?'KAUF':'VERK.'}</span>
+          <span><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong></span>
+          <span style="color:var(--text-muted);">${tr.type==='stock' ? tr.quantity+' Stk.' : tr.quantity+' '+tr.optionType.toUpperCase()}</span>
+          ${tr.type==='option'?`<span style="color:var(--text-muted);font-size:0.75rem;">Strike ${formatCurrency(tr.strike)}</span>`:''}
+        </div>
+        <strong>${tr.direction==='buy'?'-':'+'} ${formatCurrency(tr.total)}</strong>
+      </div>
+    `).join('')}
+    <div style="display:flex;justify-content:space-between;padding:10px 12px;font-size:0.85rem;font-weight:700;background:var(--bg-secondary);border-radius:0 0 8px 8px;">
+      <span>Netto diese Runde</span>
+      <span class="${totalSpent > 0 ? 'negative' : 'positive'}">${totalSpent > 0 ? '-' : '+'}${formatCurrency(Math.abs(totalSpent))}</span>
+    </div>
   </div>`;
 }
 
@@ -862,9 +901,13 @@ function submitOrder() {
   const prices = gameData.prices;
   const price = prices[orderForm.stock];
   if (orderForm.type === 'stock') {
-    const dir = orderForm.direction === 'buy' ? 'Kauf' : 'Verkauf';
-    send({ action: 'trade', tradeType: 'stock', stock: orderForm.stock, quantity: orderForm.quantity, direction: orderForm.direction });
-    showNotification(`✅ ${dir}: ${orderForm.quantity} Stk. ${STOCKS[orderForm.stock].name} @ ${formatCurrency(price)}`);
+    if (!orderForm.quantity || orderForm.quantity < 100 || orderForm.quantity % 100 !== 0) {
+      showNotification('Aktien müssen in 100er-Paketen sein!', 'error'); return;
+    }
+    pendingTrades.push({
+      tradeType: 'stock', stock: orderForm.stock, quantity: orderForm.quantity,
+      direction: orderForm.direction, price, total: price * orderForm.quantity
+    });
   } else {
     const remaining = gameData.maxRounds - gameData.currentRound;
     const chain = generateOptionChain(price, STOCKS[orderForm.stock].beta, remaining);
@@ -872,10 +915,34 @@ function submitOrder() {
     const option = chain.find(c => c.strike === strike);
     if (!option) { showNotification('Bitte Strike wählen!', 'error'); return; }
     const optPrice = orderForm.optionType === 'call' ? option.call : option.put;
-    const dir = orderForm.direction === 'buy' ? 'Kauf' : 'Verkauf';
-    send({ action: 'trade', tradeType: 'option', stock: orderForm.stock, quantity: orderForm.quantity, direction: orderForm.direction, optionType: orderForm.optionType, strike, premium: optPrice });
-    showNotification(`✅ ${dir}: ${orderForm.quantity} ${orderForm.optionType.toUpperCase()} ${STOCKS[orderForm.stock].name} Strike ${formatCurrency(strike)} @ ${formatCurrency(optPrice)}`);
+    pendingTrades.push({
+      tradeType: 'option', stock: orderForm.stock, quantity: orderForm.quantity,
+      direction: orderForm.direction, optionType: orderForm.optionType,
+      strike, premium: optPrice, price: optPrice, total: optPrice * orderForm.quantity * 100
+    });
   }
+  showNotification(`➕ Trade hinzugefügt — ${pendingTrades.length} in Vorschau`);
+  render();
+}
+
+function removePendingTrade(index) {
+  pendingTrades.splice(index, 1);
+  render();
+}
+
+function confirmAllTrades() {
+  if (pendingTrades.length === 0) { showNotification('Keine Trades in der Vorschau!', 'error'); return; }
+  pendingTrades.forEach(tr => {
+    if (tr.tradeType === 'stock') {
+      send({ action: 'trade', tradeType: 'stock', stock: tr.stock, quantity: tr.quantity, direction: tr.direction });
+    } else {
+      send({ action: 'trade', tradeType: 'option', stock: tr.stock, quantity: tr.quantity, direction: tr.direction, optionType: tr.optionType, strike: tr.strike, premium: tr.premium });
+    }
+  });
+  const count = pendingTrades.length;
+  pendingTrades = [];
+  showNotification(`✅ ${count} Trade${count > 1 ? 's' : ''} bestätigt und gesendet!`);
+  render();
 }
 
 function renderOptionsTab(prices) {
