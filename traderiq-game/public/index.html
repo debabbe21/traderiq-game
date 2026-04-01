@@ -515,7 +515,7 @@ function renderAdminView() {
                 ${change >= 0 ? '+' : ''}${formatCurrency(change)} (${change >= 0 ? '+' : ''}${changePct.toFixed(1)}%)
               </div>
               <div class="stock-beta">Beta: ${STOCKS[s].beta} | Volatilität: ±${STOCKS[s].beta * 3}</div>
-              <canvas id="chart-${s}"></canvas>
+              <div style="height:120px;position:relative;"><canvas id="chart-${s}"></canvas></div>
             </div>`;
         }).join('')}
       </div>
@@ -633,7 +633,7 @@ function renderTeamView() {
               <div class="stock-name">${STOCKS[s].name} ${t.positions[s] > 0 ? `<span class="position-badge">${t.positions[s]} Stk.</span>` : ''}</div>
               <div class="stock-price" style="color:${STOCKS[s].color}">${formatCurrency(price)}</div>
               <div class="stock-change ${cls2}">${change >= 0 ? '+' : ''}${formatCurrency(change)}</div>
-              <canvas id="chart-${s}"></canvas>
+              <div style="height:120px;position:relative;"><canvas id="chart-${s}"></canvas></div>
             </div>`;
         }).join('')}
       </div>
@@ -718,7 +718,7 @@ function renderPortfolioTab(prices, depot, t) {
 
     <div class="card section">
       <div class="card-header"><span class="card-title">📊 Portfolio-Entwicklung</span></div>
-      <canvas id="chart-portfolio" style="width:100%;height:200px;"></canvas>
+      <div style="height:200px;position:relative;"><canvas id="chart-portfolio"></canvas></div>
     </div>
   `;
 }
@@ -995,7 +995,7 @@ function renderEndScreen() {
           }).join('')}
         </div>
         <div style="margin-top:16px;">
-          ${['A','B','C'].map(s => `<canvas id="chart-${s}" style="margin-bottom:8px;"></canvas>`).join('')}
+          ${['A','B','C'].map(s => `<canvas id="chart-${s}" style="margin-bottom:8px;height:150px;"></canvas>`).join('')}
         </div>
       </div>
 
