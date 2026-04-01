@@ -251,7 +251,7 @@ let gameData = null;   // received from server
 let charts = {};
 let teamTab = 'portfolio';
 let selectedChainStock = 'A';
-let orderForm = { type: 'stock', stock: 'A', direction: 'buy', quantity: 100, optionType: 'call', strike: null };
+let orderForm = { type: 'stock', stock: 'A', direction: 'buy', quantity: 1, optionType: 'call', strike: null };
 let pendingTrades = [];
 
 // ====== WEBSOCKET ======
@@ -774,8 +774,8 @@ function renderTradeTab(prices, t) {
             </div>
           ` : ''}
           <div class="form-group">
-            <label>Anzahl ${orderForm.type === 'option' ? '(Kontrakte à 100 Stk.)' : '(à 100 Stück)'}</label>
-            <input type="number" min="${orderForm.type === 'option' ? 1 : 100}" step="${orderForm.type === 'option' ? 1 : 100}" value="${orderForm.quantity}" onchange="orderForm.quantity=parseInt(this.value)||(orderForm.type==='option'?1:100)">
+            <label>Anzahl ${orderForm.type === 'option' ? '(Kontrakte à 100 Stk.)' : '(Pakete à 100 Aktien)'}</label>
+            <input type="number" min="1" step="1" value="${orderForm.quantity}" onchange="orderForm.quantity=Math.max(1,parseInt(this.value)||1)">
           </div>
           <div style="margin-top:8px;">
             <button class="btn btn-outline btn-large" style="width:100%;border-color:${orderForm.direction==='buy'?'var(--green)':'var(--red)'};color:${orderForm.direction==='buy'?'var(--green)':'var(--red)'};" onclick="submitOrder()">
@@ -800,7 +800,7 @@ function renderTradeTab(prices, t) {
                 <div style="display:flex;align-items:center;gap:6px;flex:1;">
                   <span class="trade-tag ${tr.direction}" style="font-size:0.65rem;padding:2px 5px;">${tr.direction==='buy'?'K':'V'}</span>
                   <strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
-                  <span style="color:var(--text-muted);font-size:0.75rem;">${tr.tradeType==='stock' ? tr.quantity+' Stk.' : tr.quantity+' '+tr.optionType.toUpperCase()}</span>
+                  <span style="color:var(--text-muted);font-size:0.75rem;">${tr.tradeType==='stock' ? (tr.displayQty||tr.quantity/100)+' Pkt. ('+tr.quantity+' Stk.)' : tr.quantity+' '+tr.optionType.toUpperCase()}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <strong style="font-size:0.82rem;">${formatCurrency(tr.total)}</strong>
@@ -829,6 +829,11 @@ function renderTradeTab(prices, t) {
               <div style="display:flex;justify-content:space-between;margin-top:4px;">
                 <span style="color:var(--text-secondary);font-size:0.85rem;">${STOCKS[s].name}</span><strong style="font-size:0.85rem;">${t.positions[s]} Stk.</strong>
               </div>` : '').join('')}
+            ${(t.options||[]).filter(o => !o.settled).map(o => `
+              <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                <span style="color:var(--text-secondary);font-size:0.85rem;">${o.type.toUpperCase()} ${STOCKS[o.stock].name} @${formatCurrency(o.strike)}</span>
+                <strong style="font-size:0.85rem;color:var(--purple);">${o.quantity} Kontr.</strong>
+              </div>`).join('')}
           </div>
         </div>
         ${renderRoundTrades(t)}
@@ -874,11 +879,12 @@ function renderOrderPreview(prices) {
   const price = prices[orderForm.stock];
   const remaining = gameData.maxRounds - gameData.currentRound;
   if (orderForm.type === 'stock') {
-    const total = price * orderForm.quantity;
+    const shares = orderForm.quantity * 100;
+    const total = price * shares;
     return `<div style="padding:16px;background:var(--bg-secondary);border-radius:8px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Instrument</span><strong>${STOCKS[orderForm.stock].name}</strong></div>
       <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Kurs</span><strong>${formatCurrency(price)}</strong></div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Anzahl</span><strong>${orderForm.quantity} Stk. (${orderForm.quantity/100} Paket${orderForm.quantity > 100 ? 'e' : ''})</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Anzahl</span><strong>${orderForm.quantity} Paket${orderForm.quantity > 1 ? 'e' : ''} (${shares} Stk.)</strong></div>
       <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);"><span style="font-weight:600;">Gesamt</span><strong style="font-size:1.1rem;">${formatCurrency(total)}</strong></div>
     </div>`;
   } else {
@@ -901,12 +907,14 @@ function submitOrder() {
   const prices = gameData.prices;
   const price = prices[orderForm.stock];
   if (orderForm.type === 'stock') {
-    if (!orderForm.quantity || orderForm.quantity < 100 || orderForm.quantity % 100 !== 0) {
-      showNotification('Aktien müssen in 100er-Paketen sein!', 'error'); return;
+    if (!orderForm.quantity || orderForm.quantity < 1) {
+      showNotification('Bitte mindestens 1 Paket wählen!', 'error'); return;
     }
+    const shares = orderForm.quantity * 100;
     pendingTrades.push({
-      tradeType: 'stock', stock: orderForm.stock, quantity: orderForm.quantity,
-      direction: orderForm.direction, price, total: price * orderForm.quantity
+      tradeType: 'stock', stock: orderForm.stock, quantity: shares,
+      direction: orderForm.direction, price, total: price * shares,
+      displayQty: orderForm.quantity
     });
   } else {
     const remaining = gameData.maxRounds - gameData.currentRound;
