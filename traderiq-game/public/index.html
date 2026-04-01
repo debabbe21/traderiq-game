@@ -249,7 +249,7 @@ let gameData = null;   // received from server
 let charts = {};
 let teamTab = 'portfolio';
 let selectedChainStock = 'A';
-let orderForm = { type: 'stock', stock: 'A', direction: 'buy', quantity: 1, optionType: 'call', strike: null };
+let orderForm = { type: 'stock', stock: 'A', direction: 'buy', quantity: 100, optionType: 'call', strike: null };
 
 // ====== WEBSOCKET ======
 let ws = null;
@@ -385,11 +385,13 @@ function generateOptionChain(currentPrice, beta, roundsRemaining) {
     let callPrice, putPrice;
     const base = beta * 0.4;
     if (diff >= 0) {
+      // ITM Call / OTM Put
       callPrice = diff + timeValue + base;
-      putPrice = timeValue + base - diff * 0.3;
+      putPrice = Math.max(0.01, timeValue + base - diff * 0.3);
     } else {
+      // OTM Call / ITM Put
       putPrice = Math.abs(diff) + timeValue + base;
-      callPrice = Math.abs(diff) * step + (4 - nSteps) * base * step / 60;
+      callPrice = Math.max(0.01, timeValue + base + diff * 0.3);
     }
     chain.push({
       strike, isATM: false,
@@ -617,7 +619,6 @@ function renderTeamView() {
             ${changeFromStart >= 0 ? '+' : ''}${formatCurrency(changeFromStart)}
           </div>
         </div>
-        <button class="btn btn-outline" onclick="logout()">← Zurück</button>
       </div>
     </div>
 
@@ -639,9 +640,8 @@ function renderTeamView() {
       </div>
 
       ${round === 0 ? `
-      <div class="card section" style="text-align:center;padding:30px;border-color:var(--yellow);background:rgba(245,158,11,0.05);">
-        <div class="empty-icon">⏳</div>
-        <p style="color:var(--text-secondary);">Wartet auf den Spielleiter – die erste Runde wird gleich gewürfelt!</p>
+      <div class="card section" style="text-align:center;padding:20px;border-color:var(--green);background:rgba(16,185,129,0.05);">
+        <p style="color:var(--text-secondary);">🟢 Ihr könnt bereits handeln! Der Spielleiter würfelt gleich die erste Runde.</p>
       </div>
       ` : ''}
 
@@ -724,9 +724,6 @@ function renderPortfolioTab(prices, depot, t) {
 }
 
 function renderTradeTab(prices, t) {
-  if (gameData.currentRound === 0) {
-    return '<div class="card section"><div class="empty-state"><div class="empty-icon">⏳</div><p>Handeln ist erst nach der ersten Runde möglich.</p></div></div>';
-  }
   const currentPrice = prices[orderForm.stock];
   const remaining = gameData.maxRounds - gameData.currentRound;
 
@@ -774,8 +771,8 @@ function renderTradeTab(prices, t) {
             </div>
           ` : ''}
           <div class="form-group">
-            <label>Anzahl ${orderForm.type === 'option' ? '(Kontrakte à 100 Stk.)' : '(Stück)'}</label>
-            <input type="number" min="1" value="${orderForm.quantity}" onchange="orderForm.quantity=parseInt(this.value)||1">
+            <label>Anzahl ${orderForm.type === 'option' ? '(Kontrakte à 100 Stk.)' : '(à 100 Stück)'}</label>
+            <input type="number" min="${orderForm.type === 'option' ? 1 : 100}" step="${orderForm.type === 'option' ? 1 : 100}" value="${orderForm.quantity}" onchange="orderForm.quantity=parseInt(this.value)||(orderForm.type==='option'?1:100)">
           </div>
           <div style="margin-top:8px;">
             <button class="btn ${orderForm.direction==='buy'?'btn-success':'btn-danger'} btn-large" style="width:100%;" onclick="submitOrder()">
@@ -799,7 +796,39 @@ function renderTradeTab(prices, t) {
         </div>
       </div>
     </div>
+    ${renderRoundTrades(t)}
   `;
+}
+
+function renderRoundTrades(t) {
+  const currentRound = gameData.currentRound;
+  const roundTrades = (t.trades || []).filter(tr => tr.round === currentRound);
+  if (roundTrades.length === 0) {
+    return `<div class="card" style="grid-column:1/-1;margin-top:0;">
+      <div class="card-header"><span class="card-title">📝 Trades Runde ${currentRound}</span></div>
+      <div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.85rem;">Noch keine Trades in dieser Runde</div>
+    </div>`;
+  }
+  return `<div class="card" style="grid-column:1/-1;margin-top:0;">
+    <div class="card-header">
+      <span class="card-title">📝 Trades Runde ${currentRound}</span>
+      <span style="color:var(--text-muted);font-size:0.8rem;">${roundTrades.length} Trade${roundTrades.length>1?'s':''}</span>
+    </div>
+    <table class="data-table" style="font-size:0.8rem;">
+      <tr><th>Typ</th><th>Instrument</th><th>Richtung</th><th>Anzahl</th><th>Preis</th><th>Gesamt</th></tr>
+      ${roundTrades.map(tr => `
+        <tr>
+          <td>${tr.type==='stock'?'📈 Aktie':`📋 ${tr.optionType.toUpperCase()}`}</td>
+          <td><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
+            ${tr.type==='option'?`<br><span style="font-size:0.7rem;color:var(--text-muted)">Strike: ${formatCurrency(tr.strike)}</span>`:''}</td>
+          <td><span class="trade-tag ${tr.direction}">${tr.direction==='buy'?'KAUF':'VERKAUF'}</span></td>
+          <td>${tr.quantity}${tr.type==='option'?' Kontr.':' Stk.'}</td>
+          <td>${formatCurrency(tr.price)}</td>
+          <td><strong>${formatCurrency(tr.total)}</strong></td>
+        </tr>
+      `).join('')}
+    </table>
+  </div>`;
 }
 
 function renderOrderPreview(prices) {
@@ -810,7 +839,7 @@ function renderOrderPreview(prices) {
     return `<div style="padding:16px;background:var(--bg-secondary);border-radius:8px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Instrument</span><strong>${STOCKS[orderForm.stock].name}</strong></div>
       <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Kurs</span><strong>${formatCurrency(price)}</strong></div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Anzahl</span><strong>${orderForm.quantity} Stk.</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Anzahl</span><strong>${orderForm.quantity} Stk. (${orderForm.quantity/100} Paket${orderForm.quantity > 100 ? 'e' : ''})</strong></div>
       <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);"><span style="font-weight:600;">Gesamt</span><strong style="font-size:1.1rem;">${formatCurrency(total)}</strong></div>
     </div>`;
   } else {
@@ -833,7 +862,9 @@ function submitOrder() {
   const prices = gameData.prices;
   const price = prices[orderForm.stock];
   if (orderForm.type === 'stock') {
+    const dir = orderForm.direction === 'buy' ? 'Kauf' : 'Verkauf';
     send({ action: 'trade', tradeType: 'stock', stock: orderForm.stock, quantity: orderForm.quantity, direction: orderForm.direction });
+    showNotification(`✅ ${dir}: ${orderForm.quantity} Stk. ${STOCKS[orderForm.stock].name} @ ${formatCurrency(price)}`);
   } else {
     const remaining = gameData.maxRounds - gameData.currentRound;
     const chain = generateOptionChain(price, STOCKS[orderForm.stock].beta, remaining);
@@ -841,14 +872,13 @@ function submitOrder() {
     const option = chain.find(c => c.strike === strike);
     if (!option) { showNotification('Bitte Strike wählen!', 'error'); return; }
     const optPrice = orderForm.optionType === 'call' ? option.call : option.put;
+    const dir = orderForm.direction === 'buy' ? 'Kauf' : 'Verkauf';
     send({ action: 'trade', tradeType: 'option', stock: orderForm.stock, quantity: orderForm.quantity, direction: orderForm.direction, optionType: orderForm.optionType, strike, premium: optPrice });
+    showNotification(`✅ ${dir}: ${orderForm.quantity} ${orderForm.optionType.toUpperCase()} ${STOCKS[orderForm.stock].name} Strike ${formatCurrency(strike)} @ ${formatCurrency(optPrice)}`);
   }
 }
 
 function renderOptionsTab(prices) {
-  if (gameData.currentRound === 0) {
-    return '<div class="card section"><div class="empty-state"><div class="empty-icon">⏳</div><p>Optionsketten werden nach der ersten Runde angezeigt.</p></div></div>';
-  }
   const remaining = gameData.maxRounds - gameData.currentRound;
   const currentPrice = prices[selectedChainStock];
   const chain = generateOptionChain(currentPrice, STOCKS[selectedChainStock].beta, remaining);
@@ -885,7 +915,7 @@ function renderOptionsTab(prices) {
 
 function quickBuy(type, stock, strike, price) {
   orderForm.type = 'option'; orderForm.stock = stock; orderForm.optionType = type;
-  orderForm.strike = strike; orderForm.direction = 'buy'; orderForm.quantity = 1;
+  orderForm.strike = strike; orderForm.direction = 'buy'; orderForm.quantity = 1; orderForm.type = 'option';
   teamTab = 'trade'; render();
 }
 
@@ -970,7 +1000,7 @@ function renderEndScreen() {
         <span class="header-round" style="color:var(--gold);font-weight:700;">SPIEL BEENDET</span>
       </div>
       <div class="header-right">
-        <button class="btn btn-outline" onclick="logout()">← Zurück</button>
+        ${role==='admin'?`<button class="btn btn-outline" onclick="logout()">← Zurück</button>`:''}
         ${role==='admin'?`<button class="btn btn-outline" onclick="if(confirm('Neues Spiel starten?'))send({action:'reset_game'})">🔄 Neues Spiel</button>`:''}
       </div>
     </div>
