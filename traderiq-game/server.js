@@ -9,7 +9,8 @@ const wss = new WebSocket.Server({ server });
 
 // ====== GAME CONFIG ======
 const ADMIN_PASSWORD = '2013';
-const MAX_ROUNDS = 8;
+const MAX_ROUNDS = 20;
+const MAX_TEAM_MEMBERS = 4;
 const STOCKS = {
   A: { name: 'Aktie A', beta: 10 },
   B: { name: 'Aktie B', beta: 6 },
@@ -34,9 +35,11 @@ function createFreshState() {
 function createTeamState() {
   return {
     cash: 100000,
+    margin: 0,         // blocked cash for short options
     positions: { A: 0, B: 0, C: 0 },
     options: [],
     trades: [],
+    members: 1,        // number of connected members
     depotHistory: [0],
     cashHistory: [100000],
     totalHistory: [100000]
@@ -71,7 +74,7 @@ function getLeaderboard() {
     .sort((a, b) => b.value - a.value);
 }
 
-function executeOptions(team, newPrices) {
+function executeOptions(team, newPrices, settleRound) {
   let cashChange = 0;
   const executedOptions = [];
 
@@ -92,13 +95,37 @@ function executeOptions(team, newPrices) {
       }
     }
 
+    const signedPayoff = executed ? payoff * (opt.direction === 'buy' ? 1 : -1) : 0;
     if (executed) {
-      cashChange += payoff * (opt.direction === 'buy' ? 1 : -1);
+      cashChange += signedPayoff;
     }
+
+    // Find the matching trade entry and add settlement info
+    const premiumPaid = opt.premium * opt.quantity * 100;
+    const premiumSign = opt.direction === 'buy' ? -premiumPaid : premiumPaid;
+    const realizedPL = signedPayoff + premiumSign;
+
+    // Store settlement result on the original trade
+    const matchingTrade = team.trades.find(tr =>
+      tr.type === 'option' && tr.stock === opt.stock && tr.strike === opt.strike &&
+      tr.optionType === opt.type && tr.direction === opt.direction &&
+      tr.round === opt.round && !tr.settled
+    );
+    if (matchingTrade) {
+      matchingTrade.settled = true;
+      matchingTrade.settleRound = settleRound;
+      matchingTrade.settlePrice = price;
+      matchingTrade.payoff = signedPayoff;
+      matchingTrade.realizedPL = realizedPL;
+      matchingTrade.executed = executed;
+    }
+
     executedOptions.push({ ...opt, payoff, executed, expired: !executed });
   });
 
   team.cash += cashChange;
+  // Release all margin since all options are settled
+  team.margin = 0;
   team.options = []; // All options resolved
   return executedOptions;
 }
@@ -163,6 +190,7 @@ function broadcastGameUpdate() {
           team: {
             name: info.teamName,
             cash: team.cash,
+            margin: team.margin || 0,
             positions: team.positions,
             options: team.options,
             trades: team.trades,
@@ -187,7 +215,7 @@ wss.on('connection', (ws) => {
       handleMessage(ws, msg);
     } catch (e) {
       console.error('Message error:', e);
-      sendTo(ws, { type: 'error', message: 'Ungültige Nachricht' });
+      sendTo(ws, { type: 'error', message: 'UngÃ¼ltige Nachricht' });
     }
   });
 
@@ -212,9 +240,22 @@ function handleMessage(ws, msg) {
       // Create team if not exists
       if (!gameState.teams[name]) {
         gameState.teams[name] = createTeamState();
-        console.log(`Team joined: ${name}`);
+        gameState.teams[name].members = 0;
+        console.log(`Team created: ${name}`);
+      }
+      // Check member limit
+      const team = gameState.teams[name];
+      // Count currently connected members for this team
+      let connectedMembers = 0;
+      clients.forEach((info) => {
+        if (info.type === 'team' && info.teamName === name) connectedMembers++;
+      });
+      if (connectedMembers >= MAX_TEAM_MEMBERS) {
+        sendTo(ws, { type: 'error', message: `Team "${name}" ist voll (max. ${MAX_TEAM_MEMBERS} Teilnehmer)!` });
+        return;
       }
       clients.set(ws, { type: 'team', teamName: name });
+      team.members = connectedMembers + 1;
       sendTo(ws, { type: 'joined', role: 'team', teamName: name });
       broadcastGameUpdate();
       break;
@@ -234,7 +275,7 @@ function handleMessage(ws, msg) {
     case 'roll_dice': {
       const info = clients.get(ws);
       if (!info || info.type !== 'admin') {
-        sendTo(ws, { type: 'error', message: 'Nur der Spielleiter darf würfeln!' });
+        sendTo(ws, { type: 'error', message: 'Nur der Spielleiter darf wÃ¼rfeln!' });
         return;
       }
       if (gameState.currentRound >= gameState.maxRounds) {
@@ -263,7 +304,7 @@ function handleMessage(ws, msg) {
       // Execute options for all teams
       Object.entries(gameState.teams).forEach(([name, team]) => {
         if (team.options.length > 0) {
-          executeOptions(team, newPrices);
+          executeOptions(team, newPrices, gameState.currentRound);
         }
         // Update portfolio history
         let depot = 0;
@@ -275,7 +316,7 @@ function handleMessage(ws, msg) {
         team.totalHistory.push(depot + team.cash);
       });
 
-      console.log(`Round ${gameState.currentRound}: A=${newPrices.A}€ B=${newPrices.B}€ C=${newPrices.C}€`);
+      console.log(`Round ${gameState.currentRound}: A=$${newPrices.A} B=$${newPrices.B} C=$${newPrices.C}`);
 
       // Broadcast dice animation first, then update
       broadcast({
@@ -295,9 +336,13 @@ function handleMessage(ws, msg) {
       const team = gameState.teams[info.teamName];
       if (!team) return;
 
-      // Trading is allowed from round 0 (before first dice roll)
+      // Trading is allowed from round 0 up to (but not after) maxRounds
       if (gameState.gameEnded) {
         sendTo(ws, { type: 'error', message: 'Das Spiel ist beendet!' });
+        return;
+      }
+      if (gameState.currentRound >= gameState.maxRounds) {
+        sendTo(ws, { type: 'error', message: 'Alle Runden gespielt â kein Handel mehr mÃ¶glich!' });
         return;
       }
 
@@ -305,7 +350,7 @@ function handleMessage(ws, msg) {
 
       if (msg.tradeType === 'stock') {
         if (!msg.quantity || msg.quantity < 100 || msg.quantity % 100 !== 0) {
-          sendTo(ws, { type: 'error', message: 'Aktien müssen in 100er-Paketen gehandelt werden!' });
+          sendTo(ws, { type: 'error', message: 'Aktien mÃ¼ssen in 100er-Paketen gehandelt werden!' });
           return;
         }
         const price = prices[msg.stock];
@@ -340,15 +385,23 @@ function handleMessage(ws, msg) {
 
       } else if (msg.tradeType === 'option') {
         const premium = msg.premium * msg.quantity * 100;
+        const availableCash = team.cash - team.margin;
 
         if (msg.direction === 'buy') {
-          if (premium > team.cash) {
-            sendTo(ws, { type: 'error', message: 'Nicht genug Barmittel!' });
+          if (premium > availableCash) {
+            sendTo(ws, { type: 'error', message: 'Nicht genug freie Barmittel!' });
             return;
           }
           team.cash -= premium;
         } else {
+          // Selling (writing) options: require margin = strike Ã quantity Ã 100
+          const marginRequired = msg.strike * msg.quantity * 100;
+          if (marginRequired > availableCash + premium) {
+            sendTo(ws, { type: 'error', message: `Nicht genug Kapital fÃ¼r Margin! BenÃ¶tigt: $${marginRequired.toLocaleString()}` });
+            return;
+          }
           team.cash += premium;
+          team.margin += marginRequired;
         }
 
         team.options.push({
@@ -358,7 +411,8 @@ function handleMessage(ws, msg) {
           quantity: msg.quantity,
           premium: msg.premium,
           direction: msg.direction,
-          round: gameState.currentRound
+          round: gameState.currentRound,
+          marginBlocked: msg.direction === 'sell' ? msg.strike * msg.quantity * 100 : 0
         });
 
         team.trades.push({
@@ -394,7 +448,7 @@ function handleMessage(ws, msg) {
     case 'reset_game': {
       const info = clients.get(ws);
       if (!info || info.type !== 'admin') {
-        sendTo(ws, { type: 'error', message: 'Nur der Spielleiter kann das Spiel zurücksetzen!' });
+        sendTo(ws, { type: 'error', message: 'Nur der Spielleiter kann das Spiel zurÃ¼cksetzen!' });
         return;
       }
       gameState = createFreshState();
