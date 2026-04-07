@@ -252,6 +252,7 @@ let charts = {};
 let teamTab = 'portfolio';
 let selectedChainStock = 'A';
 let orderForm = { type: 'stock', stock: 'A', direction: 'buy', quantity: 1, optionType: 'call', strike: null };
+let selectedChainStocks = { A: true, B: true, C: true }; // for inline option chains
 let pendingTrades = [];
 
 // ====== WEBSOCKET ======
@@ -332,11 +333,16 @@ function handleServerMessage(msg) {
           setTimeout(() => el.classList.remove('rolling'), 600);
         });
       }, 50);
-      showNotification(`🎲 Runde ${msg.round} gewürfelt! A=${msg.prices.A}€ B=${msg.prices.B}€ C=${msg.prices.C}€`);
+      showNotification(`🎲 Runde ${msg.round} gewürfelt! A=$${msg.prices.A} B=$${msg.prices.B} C=$${msg.prices.C}`);
       break;
 
     case 'game_ended':
+      if (gameData) {
+        gameData.gameEnded = true;
+        if (msg.leaderboard) gameData.leaderboard = msg.leaderboard;
+      }
       showNotification('🏁 Spiel beendet!');
+      render();
       break;
 
     case 'reset':
@@ -355,11 +361,11 @@ function handleServerMessage(msg) {
 
 // ====== HELPERS ======
 function formatCurrency(value) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
 }
 
 function formatNumber(value) {
-  return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
 function showNotification(text, type = 'success') {
@@ -377,31 +383,43 @@ function diceToChange(dice, beta) {
 }
 
 function generateOptionChain(currentPrice, beta, roundsRemaining) {
-  const step = Math.max(1, Math.round(beta * 1.5));
-  const nSteps = 4;
+  // Strikes are only prices reachable by dice: current ± 1β, 2β, 3β
+  const possibleChanges = [-3, -2, -1, 1, 2, 3]; // dice multipliers
+  const reachablePrices = possibleChanges.map(m => currentPrice + m * beta);
+  // Build unique sorted strikes from reachable prices
+  const strikeSet = new Set();
+  reachablePrices.forEach(p => { if (p > 0) strikeSet.add(p); });
+  const strikes = [...strikeSet].sort((a, b) => a - b);
+
   const chain = [];
-  for (let i = -nSteps; i <= nSteps; i++) {
-    const strike = Math.round(currentPrice / step) * step + i * step;
-    if (strike <= 0) continue;
-    const diff = currentPrice - strike;
-    const timeValue = Math.max(0, roundsRemaining * beta * 0.15);
-    let callPrice, putPrice;
-    const base = beta * 0.4;
-    if (diff >= 0) {
-      // ITM Call / OTM Put
-      callPrice = diff + timeValue + base;
-      putPrice = Math.max(0.01, timeValue + base - diff * 0.3);
-    } else {
-      // OTM Call / ITM Put
-      putPrice = Math.abs(diff) + timeValue + base;
-      callPrice = Math.max(0.01, timeValue + base + diff * 0.3);
-    }
-    chain.push({
-      strike, isATM: false,
-      call: Math.max(0.01, Math.round(callPrice * 100) / 100),
-      put: Math.max(0.01, Math.round(putPrice * 100) / 100)
+  strikes.forEach(strike => {
+    // Delta = how many of the 6 dice outcomes make this option end ITM
+    // Call ITM when price >= strike, Put ITM when price <= strike
+    let callITMcount = 0;
+    let putITMcount = 0;
+    reachablePrices.forEach(p => {
+      if (p >= strike) callITMcount++;
+      if (p <= strike) putITMcount++;
     });
-  }
+    const callDelta = callITMcount / 6;
+    const putDelta = putITMcount / 6;
+
+    // Price based on delta (probability) + small time value
+    const timeValue = Math.max(0, roundsRemaining * beta * 0.05);
+    const intrinsicCall = Math.max(0, currentPrice - strike);
+    const intrinsicPut = Math.max(0, strike - currentPrice);
+    const callPrice = intrinsicCall + callDelta * beta * 0.3 + timeValue * callDelta;
+    const putPrice = intrinsicPut + putDelta * beta * 0.3 + timeValue * putDelta;
+
+    chain.push({
+      strike,
+      isATM: strike === currentPrice,
+      call: Math.max(0.01, Math.round(callPrice * 100) / 100),
+      put: Math.max(0.01, Math.round(putPrice * 100) / 100),
+      callDelta: Math.round(callDelta * 1000) / 1000,
+      putDelta: Math.round(putDelta * 1000) / 1000
+    });
+  });
   return chain;
 }
 
@@ -495,10 +513,13 @@ function renderAdminView() {
       <div class="header-left">
         <span class="header-logo">${logoHTML('logo-svg logo-svg-header')}</span>
         <span class="header-badge">SPIELLEITER</span>
-        <span class="header-round">Runde <strong>${round}</strong> / ${d.maxRounds}</span>
+        <span style="font-size:0.8rem;color:var(--text-muted);">${Object.keys(d.teams || {}).length} Teams</span>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:2rem;font-weight:900;line-height:1;">${round < d.maxRounds ? 'Runde ' + (round + 1) : 'ENDE'}</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);">von ${d.maxRounds} Runden</div>
       </div>
       <div class="header-right">
-        <span style="font-size:0.8rem;color:var(--text-muted);">${Object.keys(d.teams || {}).length} Teams verbunden</span>
         <button class="btn btn-outline" onclick="logout()">← Zurück</button>
         <button class="btn btn-outline" onclick="if(confirm('Spiel wirklich zurücksetzen?'))send({action:'reset_game'})">🔄 Reset</button>
       </div>
@@ -540,7 +561,7 @@ function renderAdminView() {
                   <div class="die-wrapper">
                     <div class="die-label">${STOCKS[s].name}</div>
                     <div class="die">${dieVal}</div>
-                    <div class="die-change ${cls}">${lastDice ? (change >= 0 ? '+' : '') + change + '€' : '-'}</div>
+                    <div class="die-change ${cls}">${lastDice ? (change >= 0 ? '+' : '') + '$' + change : '-'}</div>
                   </div>`;
               }).join('')}
             </div>
@@ -549,8 +570,8 @@ function renderAdminView() {
                 🏁 Spiel beenden – Ergebnisse anzeigen
               </button>
             ` : `
-              <button class="btn btn-primary btn-large" onclick="send({action:'roll_dice'})">
-                🎲 Würfeln – Runde ${round + 1}
+              <button class="btn btn-primary btn-large" onclick="send({action:'roll_dice'})" style="width:100%;">
+                🎲 Würfeln – Runde ${round + 1} von ${d.maxRounds}
               </button>
             `}
           </div>
@@ -572,7 +593,7 @@ function renderAdminView() {
           `<div style="overflow-x:auto;">
             <table class="data-table">
               <tr><th>Runde</th><th>🎲 A</th><th>🎲 B</th><th>🎲 C</th><th>Aktie A</th><th>Aktie B</th><th>Aktie C</th></tr>
-              <tr><td>Start</td><td>-</td><td>-</td><td>-</td><td><strong>100 €</strong></td><td><strong>100 €</strong></td><td><strong>100 €</strong></td></tr>
+              <tr><td>Start</td><td>-</td><td>-</td><td>-</td><td><strong>$100</strong></td><td><strong>$100</strong></td><td><strong>$100</strong></td></tr>
               ${d.diceHistory.map((dice, i) => `
                 <tr>
                   <td><strong>R${i+1}</strong></td>
@@ -613,7 +634,10 @@ function renderTeamView() {
       <div class="header-left">
         <span class="header-logo">${logoHTML('logo-svg logo-svg-header')}</span>
         <span class="header-badge" style="background:var(--green);">${t.name}</span>
-        <span class="header-round">Runde <strong>${round}</strong> / ${d.maxRounds}</span>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:1.8rem;font-weight:900;line-height:1;">Runde ${round < d.maxRounds ? round + 1 : d.maxRounds}</div>
+        <div style="font-size:0.7rem;color:var(--text-muted);">von ${d.maxRounds}</div>
       </div>
       <div class="header-right">
         <div style="text-align:right;">
@@ -650,20 +674,18 @@ function renderTeamView() {
 
       ${round >= d.maxRounds ? `
       <div class="card section" style="text-align:center;padding:24px;border-color:var(--gold);background:rgba(251,191,36,0.08);">
-        <p style="font-size:1rem;margin-bottom:8px;">🏁 <strong>Letzte Runde!</strong> Ihr könnt noch handeln. Der Spielleiter beendet das Spiel.</p>
+        <p style="font-size:1rem;margin-bottom:8px;">🏁 <strong>Alle ${d.maxRounds} Runden gespielt!</strong> Kein Handel mehr möglich. Der Spielleiter beendet das Spiel.</p>
       </div>
       ` : ''}
 
       <div class="tabs section">
         <button class="tab ${teamTab === 'portfolio' ? 'active' : ''}" onclick="teamTab='portfolio';render()">💼 Portfolio</button>
         <button class="tab ${teamTab === 'trade' ? 'active' : ''}" onclick="teamTab='trade';render()">💹 Handeln</button>
-        <button class="tab ${teamTab === 'options' ? 'active' : ''}" onclick="teamTab='options';render()">📊 Optionsketten</button>
         <button class="tab ${teamTab === 'history' ? 'active' : ''}" onclick="teamTab='history';render()">📜 Verlauf</button>
       </div>
 
       ${teamTab === 'portfolio' ? renderPortfolioTab(prices, depot, t) : ''}
       ${teamTab === 'trade' ? renderTradeTab(prices, t) : ''}
-      ${teamTab === 'options' ? renderOptionsTab(prices) : ''}
       ${teamTab === 'history' ? renderHistoryTab(t) : ''}
     </div>
   `;
@@ -675,7 +697,11 @@ function renderPortfolioTab(prices, depot, t) {
   return `
     <div class="grid-3 section">
       <div class="card"><div style="text-align:center;"><div class="stat-label">Depotwert</div><div class="stat-value">${formatCurrency(depot)}</div></div></div>
-      <div class="card"><div style="text-align:center;"><div class="stat-label">Barmittel</div><div class="stat-value">${formatCurrency(t.cash)}</div></div></div>
+      <div class="card"><div style="text-align:center;">
+        <div class="stat-label">Barmittel</div><div class="stat-value">${formatCurrency(t.cash)}</div>
+        ${(t.margin||0) > 0 ? `<div style="font-size:0.7rem;color:var(--yellow);margin-top:4px;">🔒 Margin: ${formatCurrency(t.margin)} blockiert</div>
+        <div style="font-size:0.7rem;color:var(--text-muted);">Frei: ${formatCurrency(t.cash - (t.margin||0))}</div>` : ''}
+      </div></div>
       <div class="card"><div style="text-align:center;"><div class="stat-label">Gewinn/Verlust</div><div class="stat-value ${changeFromStart >= 0 ? 'positive' : 'negative'}">${changeFromStart >= 0 ? '+' : ''}${formatCurrency(changeFromStart)}</div></div></div>
     </div>
 
@@ -729,6 +755,15 @@ function renderPortfolioTab(prices, depot, t) {
 function renderTradeTab(prices, t) {
   const currentPrice = prices[orderForm.stock];
   const remaining = gameData.maxRounds - gameData.currentRound;
+  const availableCash = t.cash - (t.margin || 0);
+
+  if (remaining <= 0) {
+    return `<div class="card section" style="text-align:center;padding:40px;">
+      <div style="font-size:2rem;margin-bottom:12px;">🏁</div>
+      <p style="font-size:1rem;color:var(--text-secondary);">Alle ${gameData.maxRounds} Runden gespielt – kein Handel mehr möglich.</p>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-top:8px;">Wartet auf den Spielleiter, der das Spiel beendet.</p>
+    </div>`;
+  }
 
   return `
     <div class="grid-2 section">
@@ -752,7 +787,7 @@ function renderTradeTab(prices, t) {
             <label>Richtung</label>
             <select onchange="orderForm.direction=this.value;render()">
               <option value="buy" ${orderForm.direction==='buy'?'selected':''}>🟢 Kaufen</option>
-              <option value="sell" ${orderForm.direction==='sell'?'selected':''}>🔴 Verkaufen</option>
+              <option value="sell" ${orderForm.direction==='sell'?'selected':''}>🔴 Verkaufen${orderForm.type==='option'?' (Margin!)':''}</option>
             </select>
           </div>
           ${orderForm.type === 'option' ? `
@@ -765,18 +800,39 @@ function renderTradeTab(prices, t) {
             </div>
             <div class="form-group">
               <label>Strike</label>
-              <select id="strike-select" onchange="orderForm.strike=parseFloat(this.value)">
+              <select id="strike-select" onchange="orderForm.strike=parseFloat(this.value);render()">
                 ${generateOptionChain(currentPrice, STOCKS[orderForm.stock].beta, remaining)
-                  .filter(o => !o.isATM)
-                  .map(o => `<option value="${o.strike}" ${orderForm.strike===o.strike?'selected':''}>${formatCurrency(o.strike)} ${o.strike > currentPrice ? '(OTM Call / ITM Put)' : '(ITM Call / OTM Put)'}</option>`)
+                  .map(o => `<option value="${o.strike}" ${orderForm.strike===o.strike?'selected':''}>${formatCurrency(o.strike)} ${o.strike === currentPrice ? '(ATM)' : o.strike > currentPrice ? '(OTM Call / ITM Put)' : '(ITM Call / OTM Put)'}</option>`)
                   .join('')}
               </select>
+              ${(() => {
+                const chain = generateOptionChain(currentPrice, STOCKS[orderForm.stock].beta, remaining);
+                const sel = orderForm.strike || chain[0]?.strike;
+                const row = chain.find(c => c.strike === sel);
+                if (!row) return '';
+                return `<div style="margin-top:6px;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;font-size:0.8rem;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="color:var(--text-muted);">Strike ${formatCurrency(row.strike)}</span>
+                    <span><span style="color:var(--green);font-weight:600;">Call $${formatNumber(row.call)}</span> <span style="color:var(--text-muted);margin:0 6px;">|</span> <span style="color:var(--red);font-weight:600;">Put $${formatNumber(row.put)}</span></span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:0.75rem;color:var(--text-muted);">
+                    <span>Delta Call: ${row.callDelta.toFixed(3)}</span>
+                    <span>Delta Put: ${row.putDelta.toFixed(3)}</span>
+                  </div>
+                </div>`;
+              })()}
             </div>
+            ${orderForm.direction === 'sell' ? `
+              <div style="padding:8px 12px;background:var(--yellow-bg);border:1px solid var(--yellow);border-radius:8px;font-size:0.75rem;color:var(--yellow);margin-bottom:8px;">
+                🔒 Margin: Beim Verkauf werden ${formatCurrency((orderForm.strike || 0) * orderForm.quantity * 100)} blockiert
+              </div>
+            ` : ''}
           ` : ''}
           <div class="form-group">
             <label>Anzahl ${orderForm.type === 'option' ? '(Kontrakte à 100 Stk.)' : '(Pakete à 100 Aktien)'}</label>
             <input type="number" min="1" step="1" value="${orderForm.quantity}" onchange="orderForm.quantity=Math.max(1,parseInt(this.value)||1)">
           </div>
+          <div style="margin-top:4px;font-size:0.75rem;color:var(--text-muted);">Frei: ${formatCurrency(availableCash)}${(t.margin||0)>0?' ('+formatCurrency(t.margin)+' Margin blockiert)':''}</div>
           <div style="margin-top:8px;">
             <button class="btn btn-outline btn-large" style="width:100%;border-color:${orderForm.direction==='buy'?'var(--green)':'var(--red)'};color:${orderForm.direction==='buy'?'var(--green)':'var(--red)'};" onclick="submitOrder()">
               ➕ ${orderForm.direction==='buy'?'Kauf':'Verkauf'} hinzufügen
@@ -839,22 +895,65 @@ function renderTradeTab(prices, t) {
         ${renderRoundTrades(t)}
       </div>
     </div>
+
+    ${renderInlineOptionChains(prices)}
+  `;
+}
+
+function renderInlineOptionChains(prices) {
+  const remaining = gameData.maxRounds - gameData.currentRound;
+  return `
+    <div class="card section">
+      <div class="card-header"><span class="card-title">📊 Optionsketten – alle Aktien</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+        ${['A','B','C'].map(s => {
+          const currentPrice = prices[s];
+          const chain = generateOptionChain(currentPrice, STOCKS[s].beta, remaining);
+          return `<div style="background:var(--bg-secondary);border-radius:8px;padding:12px;">
+            <div style="text-align:center;margin-bottom:8px;">
+              <strong style="color:${STOCKS[s].color}">${STOCKS[s].name}</strong>
+              <span style="color:var(--text-muted);font-size:0.8rem;margin-left:6px;">${formatCurrency(currentPrice)}</span>
+            </div>
+            <table style="width:100%;font-size:0.75rem;border-collapse:collapse;">
+              <tr style="color:var(--text-muted);font-size:0.65rem;text-transform:uppercase;">
+                <td style="color:var(--green);padding:2px 4px;">Call</td>
+                <td style="color:var(--green);padding:2px 4px;">Δ</td>
+                <td style="text-align:center;padding:2px 4px;font-weight:700;">Strike</td>
+                <td style="color:var(--red);padding:2px 4px;">Δ</td>
+                <td style="color:var(--red);padding:2px 4px;text-align:right;">Put</td>
+              </tr>
+              ${chain.map(row => `
+                <tr style="border-top:1px solid rgba(42,53,72,0.3);cursor:pointer;" onclick="quickBuy('call','${s}',${row.strike},${row.call})">
+                  <td style="padding:4px;color:var(--green);font-weight:600;">$${formatNumber(row.call)}</td>
+                  <td style="padding:4px;color:var(--text-muted);font-size:0.7rem;">${row.callDelta.toFixed(2)}</td>
+                  <td style="text-align:center;padding:4px;font-weight:700;${row.isATM?'color:var(--yellow);':''}">${formatCurrency(row.strike)}</td>
+                  <td style="padding:4px;color:var(--text-muted);font-size:0.7rem;">${row.putDelta.toFixed(2)}</td>
+                  <td style="padding:4px;color:var(--red);font-weight:600;text-align:right;cursor:pointer;" onclick="event.stopPropagation();quickBuy('put','${s}',${row.strike},${row.put})">$${formatNumber(row.put)}</td>
+                </tr>
+              `).join('')}
+            </table>
+            <div style="text-align:center;font-size:0.65rem;color:var(--text-muted);margin-top:6px;">Klicke um zu handeln</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
   `;
 }
 
 function renderRoundTrades(t) {
   const currentRound = gameData.currentRound;
   const roundTrades = (t.trades || []).filter(tr => tr.round === currentRound);
+  const displayRound = currentRound + 1;
   if (roundTrades.length === 0) {
     return `<div class="card" id="round-trades" style="margin-top:0;">
-      <div class="card-header"><span class="card-title">📝 Trades Runde ${currentRound}</span></div>
+      <div class="card-header"><span class="card-title">📝 Trades Runde ${displayRound}</span></div>
       <div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.85rem;">Noch keine Trades in dieser Runde</div>
     </div>`;
   }
   const totalSpent = roundTrades.reduce((sum, tr) => sum + (tr.direction === 'buy' ? tr.total : -tr.total), 0);
   return `<div class="card" id="round-trades" style="margin-top:0;">
     <div class="card-header">
-      <span class="card-title">📝 Trades Runde ${currentRound}</span>
+      <span class="card-title">📝 Trades Runde ${displayRound}</span>
       <span style="color:var(--text-muted);font-size:0.8rem;">${roundTrades.length} Trade${roundTrades.length>1?'s':''}</span>
     </div>
     ${roundTrades.map((tr, i) => `
@@ -919,7 +1018,7 @@ function submitOrder() {
   } else {
     const remaining = gameData.maxRounds - gameData.currentRound;
     const chain = generateOptionChain(price, STOCKS[orderForm.stock].beta, remaining);
-    const strike = orderForm.strike || chain.find(c => !c.isATM)?.strike;
+    const strike = orderForm.strike || chain[0]?.strike;
     const option = chain.find(c => c.strike === strike);
     if (!option) { showNotification('Bitte Strike wählen!', 'error'); return; }
     const optPrice = orderForm.optionType === 'call' ? option.call : option.put;
@@ -953,56 +1052,54 @@ function confirmAllTrades() {
   render();
 }
 
-function renderOptionsTab(prices) {
-  const remaining = gameData.maxRounds - gameData.currentRound;
-  const currentPrice = prices[selectedChainStock];
-  const chain = generateOptionChain(currentPrice, STOCKS[selectedChainStock].beta, remaining);
-  return `
-    <div class="card section">
-      <div class="card-header"><span class="card-title">📊 Optionsketten</span></div>
-      <div class="chain-tabs">
-        ${['A','B','C'].map(s => `<button class="chain-tab ${selectedChainStock===s?'active':''}" onclick="selectedChainStock='${s}';render()">${STOCKS[s].name} - ${formatCurrency(prices[s])}</button>`).join('')}
-      </div>
-      <div class="option-chain">
-        <div class="option-row" style="font-weight:700;font-size:0.75rem;color:var(--text-muted);">
-          <div style="display:flex;justify-content:space-between;padding:6px 10px;"><span style="color:var(--green);">CALLS</span><span>Preis</span></div>
-          <div class="strike" style="background:transparent;">STRIKE</div>
-          <div style="display:flex;justify-content:space-between;padding:6px 10px;"><span>Preis</span><span style="color:var(--red);">PUTS</span></div>
-        </div>
-        ${chain.map(row => `
-          <div class="option-row">
-            <div class="calls-side" onclick="quickBuy('call','${selectedChainStock}',${row.strike},${row.call})">
-              <span class="option-label">${row.strike > currentPrice ? 'OTM' : 'ITM'}</span>
-              <span class="option-price" style="color:var(--green)">${formatNumber(row.call)} €</span>
-            </div>
-            <div class="strike">${formatCurrency(row.strike)}</div>
-            <div class="puts-side" onclick="quickBuy('put','${selectedChainStock}',${row.strike},${row.put})">
-              <span class="option-price" style="color:var(--red)">${formatNumber(row.put)} €</span>
-              <span class="option-label">${row.strike < currentPrice ? 'OTM' : 'ITM'}</span>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      <div style="margin-top:12px;font-size:0.75rem;color:var(--text-muted);text-align:center;">Klicke auf einen Preis um einen Trade zu platzieren | 1 Kontrakt = 100 Aktien</div>
-    </div>
-  `;
-}
-
 function quickBuy(type, stock, strike, price) {
   orderForm.type = 'option'; orderForm.stock = stock; orderForm.optionType = type;
-  orderForm.strike = strike; orderForm.direction = 'buy'; orderForm.quantity = 1; orderForm.type = 'option';
+  orderForm.strike = strike; orderForm.direction = 'buy'; orderForm.quantity = 1;
   teamTab = 'trade'; render();
+  // Scroll to order form
+  setTimeout(() => { const el = document.querySelector('.card-title'); if(el) el.scrollIntoView({behavior:'smooth'}); }, 100);
 }
 
 function renderHistoryTab(t) {
   if (!t.trades || t.trades.length === 0) {
     return '<div class="card section"><div class="empty-state"><div class="empty-icon">📝</div><p>Noch keine Trades</p></div></div>';
   }
+
+  function getResultCell(tr) {
+    if (tr.type === 'option') {
+      if (tr.settled) {
+        const plCls = tr.realizedPL >= 0 ? 'positive' : 'negative';
+        const statusText = tr.executed
+          ? `Ausgeübt R${tr.settleRound}`
+          : `Verfallen R${tr.settleRound}`;
+        return `<td>
+          <span style="font-size:0.75rem;color:var(--text-muted);">${statusText}</span><br>
+          <strong class="${plCls}">${tr.realizedPL>=0?'+':''}${formatCurrency(tr.realizedPL)}</strong>
+        </td>`;
+      } else {
+        return `<td><span style="font-size:0.75rem;color:var(--yellow);">⏳ Offen</span></td>`;
+      }
+    } else {
+      // Stock trade — show current value of the position change
+      const prices = gameData.prices || {};
+      const currentPrice = prices[tr.stock];
+      if (currentPrice && tr.direction === 'buy') {
+        const currentVal = tr.quantity * currentPrice;
+        const pl = currentVal - tr.total;
+        const plCls = pl >= 0 ? 'positive' : 'negative';
+        return `<td><span class="${plCls}" style="font-size:0.85rem;">${pl>=0?'+':''}${formatCurrency(pl)}</span></td>`;
+      } else if (currentPrice && tr.direction === 'sell') {
+        return `<td><span style="font-size:0.75rem;color:var(--text-muted);">Realisiert</span></td>`;
+      }
+      return `<td>-</td>`;
+    }
+  }
+
   return `
     <div class="card section">
       <div class="card-header"><span class="card-title">📝 Trade-Verlauf</span><span style="color:var(--text-muted);font-size:0.8rem;">${t.trades.length} Trades</span></div>
       <table class="data-table">
-        <tr><th>Runde</th><th>Typ</th><th>Instrument</th><th>Richtung</th><th>Anzahl</th><th>Preis</th><th>Gesamt</th></tr>
+        <tr><th>Runde</th><th>Typ</th><th>Instrument</th><th>Richtung</th><th>Anzahl</th><th>Preis</th><th>Gesamt</th><th>Ergebnis</th></tr>
         ${[...t.trades].reverse().map(tr => `
           <tr>
             <td>R${tr.round}</td>
@@ -1013,6 +1110,7 @@ function renderHistoryTab(t) {
             <td>${tr.quantity}${tr.type==='option'?' Kontr.':' Stk.'}</td>
             <td>${formatCurrency(tr.price)}</td>
             <td><strong>${formatCurrency(tr.total)}</strong></td>
+            ${getResultCell(tr)}
           </tr>
         `).join('')}
       </table>
@@ -1047,23 +1145,26 @@ function renderLeaderboard(lb) {
 
 // ====== END SCREEN ======
 function renderEndScreen() {
-  if (!gameData) return '';
+  if (!gameData) return '<div class="mode-selector"><p>Lade Ergebnisse...</p></div>';
   const d = gameData;
   const prices = {};
-  ['A','B','C'].forEach(s => { prices[s] = d.stockPrices[s][d.stockPrices[s].length-1]; });
+  ['A','B','C'].forEach(s => {
+    prices[s] = d.stockPrices && d.stockPrices[s] ? d.stockPrices[s][d.stockPrices[s].length-1] : 100;
+  });
 
   let teamSection = '';
   if (role === 'team' && d.team) {
     const t = d.team;
     let depot = 0;
-    ['A','B','C'].forEach(s => { depot += t.positions[s] * prices[s]; });
+    ['A','B','C'].forEach(s => { depot += (t.positions[s] || 0) * prices[s]; });
     const totalVal = depot + t.cash;
     const change = totalVal - 100000;
+    const changePct = (change / 100000 * 100).toFixed(1);
     const cls = change >= 0 ? 'positive' : 'negative';
     teamSection = `
       <p style="color:var(--text-secondary);font-size:1rem;">Team <strong>${t.name}</strong> – Endstand:</p>
       <div style="font-size:2.5rem;font-weight:900;margin:16px 0;" class="${cls}">${formatCurrency(totalVal)}</div>
-      <div class="${cls}" style="font-size:1.1rem;font-weight:600;">${change>=0?'+':''}${formatCurrency(change)} (${change>=0?'+':''}${(change/1000).toFixed(1)}%)</div>
+      <div class="${cls}" style="font-size:1.1rem;font-weight:600;">${change>=0?'+':''}${formatCurrency(change)} (${change>=0?'+':''}${changePct}%)</div>
     `;
   }
 
@@ -1125,7 +1226,7 @@ function initCharts() {
       charts[s] = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets: [{ data: priceData, borderColor: STOCKS[s].color, backgroundColor: `rgba(${STOCKS[s].colorRgb}, 0.1)`, fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: STOCKS[s].color, borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: true, grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 }, callback: v => v + '€' } } }, interaction: { intersect: false, mode: 'index' } }
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: true, grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 }, callback: v => '$' + v } } }, interaction: { intersect: false, mode: 'index' } }
       });
     });
 
@@ -1140,7 +1241,7 @@ function initCharts() {
           { label: 'Gesamt', data: t.totalHistory, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, borderWidth: 2 },
           { label: 'Barmittel', data: t.cashHistory, borderColor: '#10b981', borderDash: [5,5], tension: 0.3, borderWidth: 1.5, pointRadius: 0 }
         ] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 } } } }, scales: { x: { grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 } } }, y: { grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 }, callback: v => (v/1000)+'k€' } } } }
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 } } } }, scales: { x: { grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 } } }, y: { grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 }, callback: v => '$'+(v/1000)+'k' } } } }
       });
     }
   } catch(e) {
