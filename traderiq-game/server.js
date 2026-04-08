@@ -76,34 +76,54 @@ function getLeaderboard() {
 
 function executeOptions(team, newPrices, settleRound) {
   let cashChange = 0;
+  let positionChanges = { A: 0, B: 0, C: 0 };
   const executedOptions = [];
 
   team.options.forEach(opt => {
     const price = newPrices[opt.stock];
-    let payoff = 0;
+    const shares = opt.quantity * 100;
     let executed = false;
+    let cashEffect = 0;
+    let shareEffect = 0;
+    let exerciseDescription = '';
 
     if (opt.type === 'call') {
       if (price >= opt.strike) {
-        payoff = (price - opt.strike) * opt.quantity * 100;
         executed = true;
+        if (opt.direction === 'buy') {
+          cashEffect = -(opt.strike * shares);
+          shareEffect = shares;
+          exerciseDescription = 'Long Call: +' + shares + ' ' + opt.stock + ' @' + opt.strike;
+        } else {
+          cashEffect = opt.strike * shares;
+          shareEffect = -shares;
+          exerciseDescription = 'Short Call: -' + shares + ' ' + opt.stock + ' @' + opt.strike;
+        }
       }
     } else {
       if (price <= opt.strike) {
-        payoff = (opt.strike - price) * opt.quantity * 100;
         executed = true;
+        if (opt.direction === 'buy') {
+          cashEffect = opt.strike * shares;
+          shareEffect = -shares;
+          exerciseDescription = 'Long Put: -' + shares + ' ' + opt.stock + ' @' + opt.strike;
+        } else {
+          cashEffect = -(opt.strike * shares);
+          shareEffect = shares;
+          exerciseDescription = 'Short Put: +' + shares + ' ' + opt.stock + ' @' + opt.strike;
+        }
       }
     }
 
-    const signedPayoff = executed ? payoff * (opt.direction === 'buy' ? 1 : -1) : 0;
     if (executed) {
-      cashChange += signedPayoff;
+      cashChange += cashEffect;
+      positionChanges[opt.stock] += shareEffect;
     }
 
-    // Find the matching trade entry and add settlement info
-    const premiumPaid = opt.premium * opt.quantity * 100;
+    // Calculate realized P&L including premium
+    const premiumPaid = opt.premium * shares;
     const premiumSign = opt.direction === 'buy' ? -premiumPaid : premiumPaid;
-    const realizedPL = signedPayoff + premiumSign;
+    const realizedPL = executed ? (cashEffect + shareEffect * price + premiumSign) : premiumSign;
 
     // Store settlement result on the original trade
     const matchingTrade = team.trades.find(tr =>
@@ -115,20 +135,47 @@ function executeOptions(team, newPrices, settleRound) {
       matchingTrade.settled = true;
       matchingTrade.settleRound = settleRound;
       matchingTrade.settlePrice = price;
-      matchingTrade.payoff = signedPayoff;
+      matchingTrade.cashEffect = cashEffect;
+      matchingTrade.shareEffect = shareEffect;
       matchingTrade.realizedPL = realizedPL;
       matchingTrade.executed = executed;
+      matchingTrade.exerciseDescription = exerciseDescription;
     }
 
-    executedOptions.push({ ...opt, payoff, executed, expired: !executed });
+    // Add exercise as visible entry in trade history
+    if (executed) {
+      team.trades.push({
+        round: settleRound,
+        type: 'exercise',
+        stock: opt.stock,
+        optionType: opt.type,
+        direction: opt.direction,
+        quantity: shares,
+        strike: opt.strike,
+        price: price,
+        cashEffect: cashEffect,
+        shareEffect: shareEffect,
+        total: Math.abs(cashEffect),
+        description: exerciseDescription,
+        timestamp: Date.now()
+      });
+    }
+
+    executedOptions.push({ ...opt, cashEffect, shareEffect, executed, expired: !executed });
   });
 
+  // Apply all changes
   team.cash += cashChange;
+  ['A', 'B', 'C'].forEach(s => {
+    team.positions[s] += positionChanges[s];
+  });
+
   // Release all margin since all options are settled
   team.margin = 0;
   team.options = []; // All options resolved
   return executedOptions;
 }
+
 
 // ====== WEBSOCKET ======
 const clients = new Map(); // ws -> { type: 'admin'|'team', teamName?: string }
