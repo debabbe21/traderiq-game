@@ -321,12 +321,7 @@ function handleServerMessage(msg) {
       break;
 
     case 'game_update':
-      const wasOnEndScreen = gameData && gameData.gameEnded;
       gameData = msg.state;
-      if (wasOnEndScreen && msg.state.gameEnded) {
-        // Already on end screen — don't re-render (would destroy charts)
-        return;
-      }
       render();
       break;
 
@@ -438,10 +433,6 @@ function render() {
 
     if (!role) {
       app.innerHTML = renderLogin();
-    } else if (gameData && gameData.gameEnded) {
-      app.innerHTML = renderEndScreen();
-      if (chartTimeout) clearTimeout(chartTimeout);
-      chartTimeout = setTimeout(initCharts, 100);
     } else if (role === 'admin') {
       app.innerHTML = renderAdminView();
       if (chartTimeout) clearTimeout(chartTimeout);
@@ -576,7 +567,7 @@ function renderAdminView() {
             </div>
             ${round >= d.maxRounds ? `
               <button class="btn btn-large" style="width:100%;background:var(--gold);color:#000;font-weight:800;" onclick="if(confirm('Spiel beenden?'))send({action:'end_game'})">
-                🏁 Spiel beenden – Ergebnisse anzeigen
+                🏁 Spiel beenden
               </button>
             ` : `
               <button class="btn btn-primary btn-large" onclick="send({action:'roll_dice'})" style="width:100%;">
