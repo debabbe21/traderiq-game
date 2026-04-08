@@ -245,8 +245,8 @@ function logoHTML(cls) {
 }
 
 // ====== STATE ======
-let role = null;       // 'admin' | 'team' | null
-let teamName = '';
+let role = sessionStorage.getItem('traderiq_role') || null;
+let teamName = sessionStorage.getItem('traderiq_teamName') || '';
 let gameData = null;   // received from server
 let charts = {};
 let chartTimeout = null;
@@ -317,6 +317,8 @@ function handleServerMessage(msg) {
     case 'joined':
       role = msg.role;
       if (msg.teamName) teamName = msg.teamName;
+      sessionStorage.setItem('traderiq_role', role);
+      sessionStorage.setItem('traderiq_teamName', teamName);
       render();
       break;
 
@@ -350,6 +352,8 @@ function handleServerMessage(msg) {
       role = null;
       teamName = '';
       gameData = null;
+      sessionStorage.removeItem('traderiq_role');
+      sessionStorage.removeItem('traderiq_teamName');
       render();
       showNotification('🔄 Spiel wurde zurückgesetzt');
       break;
@@ -425,29 +429,32 @@ function generateOptionChain(currentPrice, beta, roundsRemaining) {
 }
 
 // ====== RENDERING ======
+let renderPending = false;
 function render() {
-  try {
+  if (renderPending) return;
+  renderPending = true;
+  requestAnimationFrame(() => {
+    renderPending = false;
+    try {
     Object.values(charts).forEach(c => { try { if (c && c.destroy) c.destroy(); } catch(e) {} });
     charts = {};
     const app = document.getElementById('app');
 
     if (!role) {
       app.innerHTML = renderLogin();
-      if (chartTimeout) clearTimeout(chartTimeout);
-      chartTimeout = setTimeout(initCharts, 100);
     } else if (role === 'admin') {
       app.innerHTML = renderAdminView();
-      if (chartTimeout) clearTimeout(chartTimeout);
-      chartTimeout = setTimeout(initCharts, 100);
     } else if (role === 'team') {
       app.innerHTML = renderTeamView();
-      if (chartTimeout) clearTimeout(chartTimeout);
-      chartTimeout = setTimeout(initCharts, 100);
     }
+
+    if (chartTimeout) clearTimeout(chartTimeout);
+    chartTimeout = setTimeout(initCharts, 150);
   } catch(e) {
     console.error('Render error:', e);
     document.getElementById('app').innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);"><h2>Darstellungsfehler</h2><p>${e.message}</p><button class="btn btn-primary" onclick="location.reload()">Seite neu laden</button></div>`;
   }
+  });
 }
 
 // ====== LOGIN SCREEN ======
@@ -498,6 +505,8 @@ function toggleAdminLogin() {
 
 function logout() {
   role = null; teamName = ''; gameData = null;
+  sessionStorage.removeItem('traderiq_role');
+  sessionStorage.removeItem('traderiq_teamName');
   render();
 }
 
@@ -781,7 +790,7 @@ function renderTradeTab(prices, t) {
           </div>
           <div class="form-group">
             <label>Aktie</label>
-            <select onchange="orderForm.stock=this.value;render()">
+            <select onchange="orderForm.stock=this.value;orderForm.strike=null;render()">
               ${['A','B','C'].map(s => `<option value="${s}" ${orderForm.stock===s?'selected':''}>${STOCKS[s].name} - ${formatCurrency(prices[s])}</option>`).join('')}
             </select>
           </div>
@@ -802,15 +811,16 @@ function renderTradeTab(prices, t) {
             </div>
             <div class="form-group">
               <label>Strike</label>
-              <select id="strike-select" onchange="orderForm.strike=parseFloat(this.value);render()">
+              <select id="strike-select" onchange="orderForm.strike=this.value?parseFloat(this.value):null;render();">
+                <option value="" ${orderForm.strike===null?'selected':''}>\u2014 Strike w\u00e4hlen \u2014</option>
                 ${generateOptionChain(currentPrice, STOCKS[orderForm.stock].beta, remaining)
                   .map(o => `<option value="${o.strike}" ${orderForm.strike===o.strike?'selected':''}>${formatCurrency(o.strike)} ${o.strike === currentPrice ? '(ATM)' : o.strike > currentPrice ? '(OTM Call / ITM Put)' : '(ITM Call / OTM Put)'}</option>`)
                   .join('')}
               </select>
               ${(() => {
                 const chain = generateOptionChain(currentPrice, STOCKS[orderForm.stock].beta, remaining);
-                const sel = orderForm.strike || chain[0]?.strike;
-                const row = chain.find(c => c.strike === sel);
+                const sel = orderForm.strike;
+                const row = sel ? chain.find(c => c.strike === sel) : null;
                 if (!row) return '';
                 return `<div style="margin-top:6px;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;font-size:0.8rem;">
                   <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -990,7 +1000,7 @@ function renderOrderPreview(prices) {
     </div>`;
   } else {
     const chain = generateOptionChain(price, STOCKS[orderForm.stock].beta, remaining);
-    const selectedStrike = orderForm.strike || chain.find(c => !c.isATM)?.strike;
+    const selectedStrike = orderForm.strike;
     const option = chain.find(c => c.strike === selectedStrike);
     const optPrice = option ? (orderForm.optionType === 'call' ? option.call : option.put) : 0;
     const total = optPrice * orderForm.quantity * 100;
@@ -1020,7 +1030,8 @@ function submitOrder() {
   } else {
     const remaining = gameData.maxRounds - gameData.currentRound;
     const chain = generateOptionChain(price, STOCKS[orderForm.stock].beta, remaining);
-    const strike = orderForm.strike || chain[0]?.strike;
+    const strike = orderForm.strike;
+    if (!strike) { showNotification('Bitte zuerst einen Strike w\u00e4hlen!', 'error'); return; }
     const option = chain.find(c => c.strike === strike);
     if (!option) { showNotification('Bitte Strike wählen!', 'error'); return; }
     const optPrice = orderForm.optionType === 'call' ? option.call : option.put;
@@ -1102,8 +1113,20 @@ function renderHistoryTab(t) {
       <div class="card-header"><span class="card-title">📝 Trade-Verlauf</span><span style="color:var(--text-muted);font-size:0.8rem;">${t.trades.length} Trades</span></div>
       <table class="data-table">
         <tr><th>Runde</th><th>Typ</th><th>Instrument</th><th>Richtung</th><th>Anzahl</th><th>Preis</th><th>Gesamt</th><th>Ergebnis</th></tr>
-        ${[...t.trades].reverse().map(tr => `
-          <tr>
+        ${[...t.trades].reverse().map(tr => {
+          if (tr.type === 'exercise') {
+            return `<tr style="background:rgba(139,92,246,0.08);">
+              <td>R${tr.round}</td>
+              <td>⚡ Ausübung</td>
+              <td><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong><br><span style="font-size:0.75rem;color:var(--text-muted)">${tr.optionType.toUpperCase()} Strike: ${formatCurrency(tr.strike)}</span></td>
+              <td><span class="trade-tag ${tr.shareEffect > 0 ? 'buy' : 'sell'}">${tr.shareEffect > 0 ? 'EINBUCH.' : 'AUSBUCH.'}</span></td>
+              <td>${Math.abs(tr.shareEffect)} Stk.</td>
+              <td>${formatCurrency(tr.strike)}</td>
+              <td><strong class="${tr.cashEffect >= 0 ? 'positive' : 'negative'}">${tr.cashEffect >= 0 ? '+' : ''}${formatCurrency(tr.cashEffect)}</strong></td>
+              <td><span style="font-size:0.75rem;color:var(--purple);">${tr.shareEffect > 0 ? '+' : ''}${tr.shareEffect} Aktien</span></td>
+            </tr>`;
+          }
+          return `<tr>
             <td>R${tr.round}</td>
             <td>${tr.type==='stock'?'📈 Aktie':`📋 ${tr.optionType.toUpperCase()}`}</td>
             <td><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
@@ -1113,8 +1136,8 @@ function renderHistoryTab(t) {
             <td>${formatCurrency(tr.price)}</td>
             <td><strong>${formatCurrency(tr.total)}</strong></td>
             ${getResultCell(tr)}
-          </tr>
-        `).join('')}
+          </tr>`;
+        }).join('')}
       </table>
     </div>
   `;
