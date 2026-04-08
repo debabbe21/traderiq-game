@@ -249,6 +249,7 @@ let role = null;       // 'admin' | 'team' | null
 let teamName = '';
 let gameData = null;   // received from server
 let charts = {};
+let chartTimeout = null;
 let teamTab = 'portfolio';
 let selectedChainStock = 'A';
 let orderForm = { type: 'stock', stock: 'A', direction: 'buy', quantity: 1, optionType: 'call', strike: null };
@@ -320,7 +321,12 @@ function handleServerMessage(msg) {
       break;
 
     case 'game_update':
+      const wasOnEndScreen = gameData && gameData.gameEnded;
       gameData = msg.state;
+      if (wasOnEndScreen && msg.state.gameEnded) {
+        // Already on end screen — don't re-render (would destroy charts)
+        return;
+      }
       render();
       break;
 
@@ -434,13 +440,16 @@ function render() {
       app.innerHTML = renderLogin();
     } else if (gameData && gameData.gameEnded) {
       app.innerHTML = renderEndScreen();
-      setTimeout(initCharts, 50);
+      if (chartTimeout) clearTimeout(chartTimeout);
+      chartTimeout = setTimeout(initCharts, 100);
     } else if (role === 'admin') {
       app.innerHTML = renderAdminView();
-      setTimeout(initCharts, 50);
+      if (chartTimeout) clearTimeout(chartTimeout);
+      chartTimeout = setTimeout(initCharts, 100);
     } else if (role === 'team') {
       app.innerHTML = renderTeamView();
-      setTimeout(initCharts, 50);
+      if (chartTimeout) clearTimeout(chartTimeout);
+      chartTimeout = setTimeout(initCharts, 100);
     }
   } catch(e) {
     console.error('Render error:', e);
@@ -1201,7 +1210,7 @@ function renderEndScreen() {
           }).join('')}
         </div>
         <div style="margin-top:16px;">
-          ${['A','B','C'].map(s => `<canvas id="chart-${s}" style="margin-bottom:8px;height:150px;"></canvas>`).join('')}
+          ${['A','B','C'].map(s => `<div style="position:relative;height:150px;margin-bottom:8px;overflow:hidden;"><canvas id="chart-${s}" style="height:150px;max-height:150px;"></canvas></div>`).join('')}
         </div>
       </div>
 
@@ -1215,6 +1224,7 @@ function renderEndScreen() {
 
 // ====== CHARTS ======
 function initCharts() {
+  Object.values(charts).forEach(c => { try { if (c && c.destroy) c.destroy(); } catch(e) {} });
   charts = {};
   try {
     ['A','B','C'].forEach(s => {
