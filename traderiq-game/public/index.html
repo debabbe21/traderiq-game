@@ -394,7 +394,7 @@ function generateOptionChain(currentPrice, beta, roundsRemaining) {
   // Build unique sorted strikes from reachable prices
   const strikeSet = new Set();
   reachablePrices.forEach(p => { if (p > 0) strikeSet.add(p); });
-  const strikes = [...strikeSet].sort((a, b) => a - b);
+  const strikes = [...strikeSet].sort((a, b) => b - a);
 
   const chain = [];
   strikes.forEach(strike => {
@@ -436,24 +436,24 @@ function render() {
   requestAnimationFrame(() => {
     renderPending = false;
     try {
-    Object.values(charts).forEach(c => { try { if (c && c.destroy) c.destroy(); } catch(e) {} });
-    charts = {};
-    const app = document.getElementById('app');
+      Object.values(charts).forEach(c => { try { if (c && c.destroy) c.destroy(); } catch(e) {} });
+      charts = {};
+      const app = document.getElementById('app');
 
-    if (!role) {
-      app.innerHTML = renderLogin();
-    } else if (role === 'admin') {
-      app.innerHTML = renderAdminView();
-    } else if (role === 'team') {
-      app.innerHTML = renderTeamView();
+      if (!role) {
+        app.innerHTML = renderLogin();
+      } else if (role === 'admin') {
+        app.innerHTML = renderAdminView();
+      } else if (role === 'team') {
+        app.innerHTML = renderTeamView();
+      }
+
+      if (chartTimeout) clearTimeout(chartTimeout);
+      chartTimeout = setTimeout(initCharts, 150);
+    } catch(e) {
+      console.error('Render error:', e);
+      document.getElementById('app').innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);"><h2>Darstellungsfehler</h2><p>${e.message}</p><button class="btn btn-primary" onclick="location.reload()">Seite neu laden</button></div>`;
     }
-
-    if (chartTimeout) clearTimeout(chartTimeout);
-    chartTimeout = setTimeout(initCharts, 150);
-  } catch(e) {
-    console.error('Render error:', e);
-    document.getElementById('app').innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);"><h2>Darstellungsfehler</h2><p>${e.message}</p><button class="btn btn-primary" onclick="location.reload()">Seite neu laden</button></div>`;
-  }
   });
 }
 
@@ -811,8 +811,8 @@ function renderTradeTab(prices, t) {
             </div>
             <div class="form-group">
               <label>Strike</label>
-              <select id="strike-select" onchange="orderForm.strike=this.value?parseFloat(this.value):null;render();">
-                <option value="" ${orderForm.strike===null?'selected':''}>\u2014 Strike w\u00e4hlen \u2014</option>
+              <select id="strike-select" onchange="orderForm.strike=this.value?parseFloat(this.value):null;render()">
+                <option value="" ${orderForm.strike===null?'selected':''}>— Strike wählen —</option>
                 ${generateOptionChain(currentPrice, STOCKS[orderForm.stock].beta, remaining)
                   .map(o => `<option value="${o.strike}" ${orderForm.strike===o.strike?'selected':''}>${formatCurrency(o.strike)} ${o.strike === currentPrice ? '(ATM)' : o.strike > currentPrice ? '(OTM Call / ITM Put)' : '(ITM Call / OTM Put)'}</option>`)
                   .join('')}
@@ -868,7 +868,7 @@ function renderTradeTab(prices, t) {
                 <div style="display:flex;align-items:center;gap:6px;flex:1;">
                   <span class="trade-tag ${tr.direction}" style="font-size:0.65rem;padding:2px 5px;">${tr.direction==='buy'?'K':'V'}</span>
                   <strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
-                  <span style="color:var(--text-muted);font-size:0.75rem;">${tr.tradeType==='stock' ? (tr.displayQty||tr.quantity/100)+' Pkt. ('+tr.quantity+' Stk.)' : tr.quantity+' '+tr.optionType.toUpperCase()}</span>
+                  <span style="color:var(--text-muted);font-size:0.75rem;">${tr.tradeType==='stock' ? (tr.displayQty||tr.quantity/100)+' Pkt. ('+tr.quantity+' Stk.)' : tr.quantity+' '+tr.optionType.toUpperCase()+' @'+formatCurrency(tr.strike)}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <strong style="font-size:0.82rem;">${formatCurrency(tr.total)}</strong>
@@ -1031,9 +1031,9 @@ function submitOrder() {
     const remaining = gameData.maxRounds - gameData.currentRound;
     const chain = generateOptionChain(price, STOCKS[orderForm.stock].beta, remaining);
     const strike = orderForm.strike;
-    if (!strike) { showNotification('Bitte zuerst einen Strike w\u00e4hlen!', 'error'); return; }
+    if (!strike) { showNotification('Bitte zuerst einen Strike wählen!', 'error'); return; }
     const option = chain.find(c => c.strike === strike);
-    if (!option) { showNotification('Bitte Strike wählen!', 'error'); return; }
+    if (!option) { showNotification('Ungültiger Strike!', 'error'); return; }
     const optPrice = orderForm.optionType === 'call' ? option.call : option.put;
     pendingTrades.push({
       tradeType: 'option', stock: orderForm.stock, quantity: orderForm.quantity,
@@ -1115,10 +1115,12 @@ function renderHistoryTab(t) {
         <tr><th>Runde</th><th>Typ</th><th>Instrument</th><th>Richtung</th><th>Anzahl</th><th>Preis</th><th>Gesamt</th><th>Ergebnis</th></tr>
         ${[...t.trades].reverse().map(tr => {
           if (tr.type === 'exercise') {
+            const clsEx = tr.shareEffect > 0 ? 'positive' : 'negative';
             return `<tr style="background:rgba(139,92,246,0.08);">
               <td>R${tr.round}</td>
               <td>⚡ Ausübung</td>
-              <td><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong><br><span style="font-size:0.75rem;color:var(--text-muted)">${tr.optionType.toUpperCase()} Strike: ${formatCurrency(tr.strike)}</span></td>
+              <td><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
+                <br><span style="font-size:0.75rem;color:var(--text-muted)">${tr.optionType.toUpperCase()} Strike: ${formatCurrency(tr.strike)}</span></td>
               <td><span class="trade-tag ${tr.shareEffect > 0 ? 'buy' : 'sell'}">${tr.shareEffect > 0 ? 'EINBUCH.' : 'AUSBUCH.'}</span></td>
               <td>${Math.abs(tr.shareEffect)} Stk.</td>
               <td>${formatCurrency(tr.strike)}</td>
