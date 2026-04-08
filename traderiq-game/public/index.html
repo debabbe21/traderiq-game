@@ -433,8 +433,6 @@ function render() {
 
     if (!role) {
       app.innerHTML = renderLogin();
-    } else if (gameData && gameData.gameEnded) {
-      app.innerHTML = renderEndScreen();
       if (chartTimeout) clearTimeout(chartTimeout);
       chartTimeout = setTimeout(initCharts, 100);
     } else if (role === 'admin') {
@@ -571,7 +569,7 @@ function renderAdminView() {
             </div>
             ${round >= d.maxRounds ? `
               <button class="btn btn-large" style="width:100%;background:var(--gold);color:#000;font-weight:800;" onclick="if(confirm('Spiel beenden?'))send({action:'end_game'})">
-                🏁 Spiel beenden – Ergebnisse anzeigen
+                🏁 Spiel beenden
               </button>
             ` : `
               <button class="btn btn-primary btn-large" onclick="send({action:'roll_dice'})" style="width:100%;">
@@ -1205,7 +1203,7 @@ function renderEndScreen() {
           }).join('')}
         </div>
         <div style="margin-top:16px;">
-          ${['A','B','C'].map(s => `<canvas id="chart-${s}" style="margin-bottom:8px;height:150px;"></canvas>`).join('')}
+          ${['A','B','C'].map(s => `<div style="position:relative;height:150px;margin-bottom:8px;overflow:hidden;"><canvas id="chart-${s}" style="height:150px;max-height:150px;"></canvas></div>`).join('')}
         </div>
       </div>
 
