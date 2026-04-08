@@ -91,26 +91,30 @@ function executeOptions(team, newPrices, settleRound) {
       if (price >= opt.strike) {
         executed = true;
         if (opt.direction === 'buy') {
+          // Long Call: Recht zu kaufen → zahle Strike, erhalte Aktien
           cashEffect = -(opt.strike * shares);
           shareEffect = shares;
-          exerciseDescription = 'Long Call: +' + shares + ' ' + opt.stock + ' @' + opt.strike;
+          exerciseDescription = `Long Call ausgeübt: +${shares} ${opt.stock} @${opt.strike}`;
         } else {
+          // Short Call: Pflicht zu liefern → liefere Aktien, erhalte Strike
           cashEffect = opt.strike * shares;
           shareEffect = -shares;
-          exerciseDescription = 'Short Call: -' + shares + ' ' + opt.stock + ' @' + opt.strike;
+          exerciseDescription = `Short Call ausgeübt: -${shares} ${opt.stock} @${opt.strike}`;
         }
       }
-    } else {
+    } else { // put
       if (price <= opt.strike) {
         executed = true;
         if (opt.direction === 'buy') {
+          // Long Put: Recht zu verkaufen → liefere Aktien, erhalte Strike
           cashEffect = opt.strike * shares;
           shareEffect = -shares;
-          exerciseDescription = 'Long Put: -' + shares + ' ' + opt.stock + ' @' + opt.strike;
+          exerciseDescription = `Long Put ausgeübt: -${shares} ${opt.stock} @${opt.strike}`;
         } else {
+          // Short Put: Pflicht zu kaufen → zahle Strike, erhalte Aktien
           cashEffect = -(opt.strike * shares);
           shareEffect = shares;
-          exerciseDescription = 'Short Put: +' + shares + ' ' + opt.stock + ' @' + opt.strike;
+          exerciseDescription = `Short Put ausgeübt: +${shares} ${opt.stock} @${opt.strike}`;
         }
       }
     }
@@ -168,6 +172,8 @@ function executeOptions(team, newPrices, settleRound) {
   team.cash += cashChange;
   ['A', 'B', 'C'].forEach(s => {
     team.positions[s] += positionChanges[s];
+    // Positions can go negative (short stock from exercised short calls)
+    // This is intentional — the team owes shares
   });
 
   // Release all margin since all options are settled
@@ -175,7 +181,6 @@ function executeOptions(team, newPrices, settleRound) {
   team.options = []; // All options resolved
   return executedOptions;
 }
-
 
 // ====== WEBSOCKET ======
 const clients = new Map(); // ws -> { type: 'admin'|'team', teamName?: string }
@@ -262,7 +267,7 @@ wss.on('connection', (ws) => {
       handleMessage(ws, msg);
     } catch (e) {
       console.error('Message error:', e);
-      sendTo(ws, { type: 'error', message: 'UngÃ¼ltige Nachricht' });
+      sendTo(ws, { type: 'error', message: 'Ungültige Nachricht' });
     }
   });
 
@@ -322,7 +327,7 @@ function handleMessage(ws, msg) {
     case 'roll_dice': {
       const info = clients.get(ws);
       if (!info || info.type !== 'admin') {
-        sendTo(ws, { type: 'error', message: 'Nur der Spielleiter darf wÃ¼rfeln!' });
+        sendTo(ws, { type: 'error', message: 'Nur der Spielleiter darf würfeln!' });
         return;
       }
       if (gameState.currentRound >= gameState.maxRounds) {
@@ -389,7 +394,7 @@ function handleMessage(ws, msg) {
         return;
       }
       if (gameState.currentRound >= gameState.maxRounds) {
-        sendTo(ws, { type: 'error', message: 'Alle Runden gespielt â kein Handel mehr mÃ¶glich!' });
+        sendTo(ws, { type: 'error', message: 'Alle Runden gespielt — kein Handel mehr möglich!' });
         return;
       }
 
@@ -397,7 +402,7 @@ function handleMessage(ws, msg) {
 
       if (msg.tradeType === 'stock') {
         if (!msg.quantity || msg.quantity < 100 || msg.quantity % 100 !== 0) {
-          sendTo(ws, { type: 'error', message: 'Aktien mÃ¼ssen in 100er-Paketen gehandelt werden!' });
+          sendTo(ws, { type: 'error', message: 'Aktien müssen in 100er-Paketen gehandelt werden!' });
           return;
         }
         const price = prices[msg.stock];
@@ -441,10 +446,15 @@ function handleMessage(ws, msg) {
           }
           team.cash -= premium;
         } else {
-          // Selling (writing) options: require margin = strike Ã quantity Ã 100
-          const marginRequired = msg.strike * msg.quantity * 100;
+          // Selling (writing) options: require margin = strike × quantity × 100
+          // Exception: Covered Call — if selling a call and team owns enough shares, margin = 0
+          let marginRequired = msg.strike * msg.quantity * 100;
+          const sharesNeeded = msg.quantity * 100;
+          if (msg.optionType === 'call' && team.positions[msg.stock] >= sharesNeeded) {
+            marginRequired = 0; // Covered Call — no margin needed
+          }
           if (marginRequired > availableCash + premium) {
-            sendTo(ws, { type: 'error', message: `Nicht genug Kapital fÃ¼r Margin! BenÃ¶tigt: $${marginRequired.toLocaleString()}` });
+            sendTo(ws, { type: 'error', message: `Nicht genug Kapital für Margin! Benötigt: $${marginRequired.toLocaleString()}` });
             return;
           }
           team.cash += premium;
@@ -459,7 +469,7 @@ function handleMessage(ws, msg) {
           premium: msg.premium,
           direction: msg.direction,
           round: gameState.currentRound,
-          marginBlocked: msg.direction === 'sell' ? msg.strike * msg.quantity * 100 : 0
+          marginBlocked: msg.direction === 'sell' ? marginRequired : 0
         });
 
         team.trades.push({
@@ -495,7 +505,7 @@ function handleMessage(ws, msg) {
     case 'reset_game': {
       const info = clients.get(ws);
       if (!info || info.type !== 'admin') {
-        sendTo(ws, { type: 'error', message: 'Nur der Spielleiter kann das Spiel zurÃ¼cksetzen!' });
+        sendTo(ws, { type: 'error', message: 'Nur der Spielleiter kann das Spiel zurücksetzen!' });
         return;
       }
       gameState = createFreshState();
