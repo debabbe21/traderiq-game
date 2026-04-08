@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TraderIQ - Options Mastery Game</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg-primary: #0a0e17;
+    --bg-secondary: #111827;
+    --bg-card: #1a2332;
+    --bg-card-hover: #1f2b3d;
+    --border: #2a3548;
+    --text-primary: #e5e7eb;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --green: #10b981;
+    --green-bg: rgba(16, 185, 129, 0.1);
+    --red: #ef4444;
+    --red-bg: rgba(239, 68, 68, 0.1);
+    --yellow: #f59e0b;
+    --yellow-bg: rgba(245, 158, 11, 0.1);
+    --purple: #8b5cf6;
+    --gold: #fbbf24;
+    --silver: #d1d5db;
+    --bronze: #d97706;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .mode-selector {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100vh; gap: 40px; padding: 20px;
+    background: radial-gradient(ellipse at center, #111827 0%, #0a0e17 70%);
+  }
+
+  .logo-section { text-align: center; margin-bottom: 20px; }
+  .logo-section h1 { font-size: 3rem; font-weight: 900; letter-spacing: -1px; line-height: 1.2; }
+  .logo-svg { display: inline-block; vertical-align: middle; }
+  .logo-svg-header { height: 30px; width: auto; }
+  .logo-svg-main { height: 56px; width: auto; }
+  .logo-section .subtitle { font-size: 1.2rem; color: var(--text-secondary); margin-top: 8px; font-weight: 300; }
+
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .header-badge {
+    padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+    background: var(--accent); color: white; letter-spacing: 0.5px;
+  }
+  .header-round { font-size: 0.85rem; color: var(--text-secondary); }
+
+  .main-content { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  .btn {
+    padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
+    font-family: inherit; font-weight: 600; font-size: 0.85rem; transition: all 0.2s;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-success { background: var(--green); color: white; }
+  .btn-danger { background: var(--red); color: white; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+  .btn-outline:hover { border-color: var(--text-primary); color: var(--text-primary); }
+  .btn-large { padding: 12px 24px; font-size: 1rem; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+  }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .card-title { font-weight: 700; font-size: 0.95rem; }
+
+  .section { margin-bottom: 20px; }
+
+  .stock-prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .stock-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; text-align: center;
+  }
+  .stock-name { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600; }
+  .stock-price { font-size: 1.5rem; font-weight: 900; margin-bottom: 4px; }
+  .stock-change { font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; }
+  .stock-beta { font-size: 0.7rem; color: var(--text-muted); }
+  .position-badge { font-size: 0.7rem; background: var(--accent); color: white; padding: 2px 6px; border-radius: 10px; margin-left: 4px; }
+
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+
+  .dice-section { text-align: center; }
+  .dice-container { display: flex; justify-content: center; gap: 24px; margin: 16px 0; }
+  .die-wrapper { text-align: center; }
+  .die-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; }
+  .die {
+    width: 56px; height: 56px; background: var(--bg-secondary); border: 2px solid var(--border);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; font-weight: 900; margin: 0 auto;
+  }
+  .die-change { font-size: 0.8rem; font-weight: 700; margin-top: 6px; }
+  .die.rolling { animation: roll 0.6s ease-out; }
+  @keyframes roll { 0% { transform: rotateZ(0); } 50% { transform: rotateZ(180deg) scale(1.2); } 100% { transform: rotateZ(360deg); } }
+
+  .tabs { display: flex; gap: 4px; padding: 4px; background: var(--bg-secondary); border-radius: 10px; }
+  .tab {
+    flex: 1; padding: 10px; border: none; background: transparent; color: var(--text-muted);
+    font-family: inherit; font-weight: 600; font-size: 0.8rem; border-radius: 8px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .tab.active { background: var(--bg-card); color: var(--text-primary); }
+
+  .leaderboard-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .leaderboard-item:last-child { border-bottom: none; }
+  .leaderboard-rank {
+    width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-weight: 800; font-size: 0.85rem; flex-shrink: 0;
+  }
+  .rank-1 { background: var(--gold); color: #000; }
+  .rank-2 { background: var(--silver); color: #000; }
+  .rank-3 { background: var(--bronze); color: #fff; }
+  .rank-other { background: var(--bg-secondary); color: var(--text-muted); }
+  .leaderboard-name { font-weight: 600; flex: 1; }
+  .leaderboard-bar { flex: 2; height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden; }
+  .leaderboard-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+  .leaderboard-value { font-weight: 800; text-align: right; }
+
+  .data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .data-table th { text-align: left; padding: 8px; color: var(--text-muted); border-bottom: 1px solid var(--border); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+  .data-table td { padding: 8px; border-bottom: 1px solid rgba(42,53,72,0.3); }
+
+  .empty-state { text-align: center; padding: 30px; color: var(--text-muted); }
+  .empty-icon { font-size: 2rem; margin-bottom: 8px; }
+
+  .notification {
+    position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 10px;
+    background: var(--bg-card); border: 1px solid var(--green); color: var(--text-primary);
+    font-size: 0.85rem; font-weight: 500; z-index: 1000; animation: slideIn 0.3s;
+    max-width: 400px;
+  }
+  @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
+
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; text-transform: uppercase; }
+  .form-group input, .form-group select {
+    width: 100%; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: 8px; font-family: inherit; font-size: 0.9rem;
+  }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+
+  .team-name-input {
+    padding: 14px 20px; background: var(--bg-card); border: 2px solid var(--border);
+    color: var(--text-primary); border-radius: 12px; font-family: inherit; font-size: 1.1rem;
+    text-align: center; font-weight: 600;
+  }
+  .team-name-input:focus { outline: none; border-color: var(--accent); }
+
+  .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
+  .stat-value { font-size: 1.3rem; font-weight: 800; }
+
+  .trade-tag { padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+  .trade-tag.buy { background: var(--green-bg); color: var(--green); }
+  .trade-tag.sell { background: var(--red-bg); color: var(--red); }
+  .latest-trade { animation: tradeHighlight 1.5s ease-out; }
+  @keyframes tradeHighlight { 0% { background: rgba(232,127,36,0.25); } 100% { background: transparent; } }
+
+  .option-chain { margin-top: 12px; }
+  .option-row { display: grid; grid-template-columns: 1fr auto 1fr; border-bottom: 1px solid rgba(42,53,72,0.3); }
+  .option-row:last-child { border-bottom: none; }
+  .calls-side, .puts-side { display: flex; justify-content: space-between; padding: 6px 10px; cursor: pointer; transition: background 0.2s; }
+  .calls-side:hover { background: rgba(16,185,129,0.05); }
+  .puts-side:hover { background: rgba(239,68,68,0.05); }
+  .strike { padding: 6px 10px; text-align: center; font-weight: 700; font-size: 0.85rem; background: var(--bg-secondary); }
+  .strike.atm { color: var(--yellow); }
+  .option-label { font-size: 0.7rem; color: var(--text-muted); }
+  .option-price { font-weight: 600; font-size: 0.85rem; }
+
+  .chain-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .chain-tab { padding: 6px 16px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-family: inherit; font-weight: 600; font-size: 0.8rem; cursor: pointer; }
+  .chain-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  .team-overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .team-mini-card { background: var(--bg-secondary); border-radius: 8px; padding: 10px; text-align: center; }
+  .team-mini-name { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; }
+
+  .connection-status {
+    position: fixed; bottom: 12px; left: 12px; padding: 6px 12px; border-radius: 20px;
+    font-size: 0.7rem; font-weight: 600; z-index: 1000;
+  }
+  .connected { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+  .disconnected { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } }
+
+  @media (max-width: 768px) {
+    .stock-prices { grid-template-columns: 1fr; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .header { flex-wrap: wrap; gap: 8px; }
+    .dice-container { gap: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="notification-area"></div>
+<div id="connection-status" class="connection-status disconnected">⚫ Verbinde...</div>
+
+<script>
+// ====== CONFIG ======
+const STOCKS = {
+  A: { name: 'Aktie A', beta: 10, color: '#3b82f6', colorRgb: '59,130,246' },
+  B: { name: 'Aktie B', beta: 6, color: '#8b5cf6', colorRgb: '139,92,246' },
+  C: { name: 'Aktie C', beta: 3, color: '#10b981', colorRgb: '16,185,129' }
+};
+const DICE_MULTIPLIERS = [-3, -2, -1, 1, 2, 3];
+
+const LOGO_HTML = `<img src="/logo.png" style="height:100%;width:auto;">`;
+
+function logoHTML(cls) {
+  return LOGO_HTML.replace('style="height:100%;width:auto;"', `class="${cls}"`);
+}
+
+// ====== STATE ======
+let role = sessionStorage.getItem('traderiq_role') || null;
+let teamName = sessionStorage.getItem('traderiq_teamName') || '';
+let gameData = null;   // received from server
+let charts = {};
+let chartTimeout = null;
+let teamTab = 'portfolio';
+let selectedChainStock = 'A';
+let orderForm = { type: 'stock', stock: 'A', direction: 'buy', quantity: 1, optionType: 'call', strike: null };
+let selectedChainStocks = { A: true, B: true, C: true }; // for inline option chains
+let pendingTrades = [];
+
+// ====== WEBSOCKET ======
+let ws = null;
+let reconnectTimer = null;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+
+  ws.onopen = () => {
+    console.log('Connected');
+    updateConnectionStatus(true);
+    // Re-join if we had a role
+    if (role === 'team' && teamName) {
+      ws.send(JSON.stringify({ action: 'join_team', teamName }));
+    } else if (role === 'admin') {
+      ws.send(JSON.stringify({ action: 'join_admin', password: '2013' }));
+    }
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      handleServerMessage(msg);
+    } catch (err) {
+      console.error('Parse error:', err);
+    }
+  };
+
+  ws.onclose = () => {
+    updateConnectionStatus(false);
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+}
+
+function send(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  }
+}
+
+function updateConnectionStatus(connected) {
+  const el = document.getElementById('connection-status');
+  if (connected) {
+    el.className = 'connection-status connected';
+    el.innerHTML = '🟢 Verbunden';
+  } else {
+    el.className = 'connection-status disconnected';
+    el.innerHTML = '🔴 Verbindung unterbrochen...';
+  }
+}
+
+// ====== MESSAGE HANDLING ======
+function handleServerMessage(msg) {
+  switch (msg.type) {
+    case 'joined':
+      role = msg.role;
+      if (msg.teamName) teamName = msg.teamName;
+      sessionStorage.setItem('traderiq_role', role);
+      sessionStorage.setItem('traderiq_teamName', teamName);
+      render();
+      break;
+
+    case 'game_update':
+      gameData = msg.state;
+      render();
+      break;
+
+    case 'dice_rolled':
+      // Animate dice
+      setTimeout(() => {
+        const dieEls = document.querySelectorAll('.die');
+        dieEls.forEach(el => {
+          el.classList.add('rolling');
+          setTimeout(() => el.classList.remove('rolling'), 600);
+        });
+      }, 50);
+      showNotification(`🎲 Runde ${msg.round} gewürfelt! A=$${msg.prices.A} B=$${msg.prices.B} C=$${msg.prices.C}`);
+      break;
+
+    case 'game_ended':
+      if (gameData) {
+        gameData.gameEnded = true;
+        if (msg.leaderboard) gameData.leaderboard = msg.leaderboard;
+      }
+      showNotification('🏁 Spiel beendet!');
+      render();
+      break;
+
+    case 'reset':
+      role = null;
+      teamName = '';
+      gameData = null;
+      sessionStorage.removeItem('traderiq_role');
+      sessionStorage.removeItem('traderiq_teamName');
+      render();
+      showNotification('🔄 Spiel wurde zurückgesetzt');
+      break;
+
+    case 'error':
+      showNotification('⚠️ ' + msg.message, 'error');
+      break;
+  }
+}
+
+// ====== HELPERS ======
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+function showNotification(text, type = 'success') {
+  const area = document.getElementById('notification-area');
+  const el = document.createElement('div');
+  el.className = 'notification';
+  el.style.borderColor = type === 'error' ? 'var(--red)' : 'var(--green)';
+  el.textContent = text;
+  area.appendChild(el);
+  setTimeout(() => { try { el.remove(); } catch(e) {} }, 3500);
+}
+
+function diceToChange(dice, beta) {
+  return DICE_MULTIPLIERS[dice - 1] * beta;
+}
+
+function generateOptionChain(currentPrice, beta, roundsRemaining) {
+  // Strikes are only prices reachable by dice: current ± 1β, 2β, 3β
+  const possibleChanges = [-3, -2, -1, 1, 2, 3]; // dice multipliers
+  const reachablePrices = possibleChanges.map(m => currentPrice + m * beta);
+  // Build unique sorted strikes from reachable prices
+  const strikeSet = new Set();
+  reachablePrices.forEach(p => { if (p > 0) strikeSet.add(p); });
+  const strikes = [...strikeSet].sort((a, b) => b - a);
+
+  const chain = [];
+  strikes.forEach(strike => {
+    // Delta = how many of the 6 dice outcomes make this option end ITM
+    // Call ITM when price >= strike, Put ITM when price <= strike
+    let callITMcount = 0;
+    let putITMcount = 0;
+    reachablePrices.forEach(p => {
+      if (p >= strike) callITMcount++;
+      if (p <= strike) putITMcount++;
+    });
+    const callDelta = callITMcount / 6;
+    const putDelta = putITMcount / 6;
+
+    // Price based on delta (probability) + small time value
+    const timeValue = Math.max(0, roundsRemaining * beta * 0.05);
+    const intrinsicCall = Math.max(0, currentPrice - strike);
+    const intrinsicPut = Math.max(0, strike - currentPrice);
+    const callPrice = intrinsicCall + callDelta * beta * 0.3 + timeValue * callDelta;
+    const putPrice = intrinsicPut + putDelta * beta * 0.3 + timeValue * putDelta;
+
+    chain.push({
+      strike,
+      isATM: strike === currentPrice,
+      call: Math.max(0.01, Math.round(callPrice * 100) / 100),
+      put: Math.max(0.01, Math.round(putPrice * 100) / 100),
+      callDelta: Math.round(callDelta * 1000) / 1000,
+      putDelta: Math.round(putDelta * 1000) / 1000
+    });
+  });
+  return chain;
+}
+
+// ====== RENDERING ======
+let renderPending = false;
+function render() {
+  if (renderPending) return;
+  renderPending = true;
+  requestAnimationFrame(() => {
+    renderPending = false;
+    try {
+      Object.values(charts).forEach(c => { try { if (c && c.destroy) c.destroy(); } catch(e) {} });
+      charts = {};
+      const app = document.getElementById('app');
+
+      if (!role) {
+        app.innerHTML = renderLogin();
+      } else if (role === 'admin') {
+        app.innerHTML = renderAdminView();
+      } else if (role === 'team') {
+        app.innerHTML = renderTeamView();
+      }
+
+      if (chartTimeout) clearTimeout(chartTimeout);
+      chartTimeout = setTimeout(initCharts, 150);
+    } catch(e) {
+      console.error('Render error:', e);
+      document.getElementById('app').innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);"><h2>Darstellungsfehler</h2><p>${e.message}</p><button class="btn btn-primary" onclick="location.reload()">Seite neu laden</button></div>`;
+    }
+  });
+}
+
+// ====== LOGIN SCREEN ======
+function renderLogin() {
+  return `
+    <div class="mode-selector">
+      <div class="logo-section">
+        <h1>${logoHTML('logo-svg logo-svg-main')}</h1>
+        <div class="subtitle">Options Mastery Game</div>
+      </div>
+      <div style="max-width:400px;width:100%;text-align:center;">
+        <p style="color:var(--text-secondary);margin-bottom:24px;font-size:1rem;line-height:1.6;">
+          Willkommen zum Options Trading Game!<br>Gebt euren Teamnamen ein und startet das Spiel.
+        </p>
+        <input type="text" class="team-name-input" id="team-name-input" placeholder="Euer Teamname..."
+          onkeydown="if(event.key==='Enter')joinTeam()" style="width:100%;margin-bottom:12px;">
+        <button class="btn btn-primary btn-large" onclick="joinTeam()" style="width:100%;">🚀 Spiel beitreten</button>
+      </div>
+      <div style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);text-align:center;">
+        <button class="btn btn-outline" onclick="toggleAdminLogin()" style="font-size:0.8rem;opacity:0.6;">🔐 Spielleiter-Zugang</button>
+      </div>
+      <div id="admin-login" style="display:none;text-align:center;margin-top:16px;">
+        <input type="password" class="team-name-input" id="admin-password" placeholder="Spielleiter-Passwort..."
+          onkeydown="if(event.key==='Enter')joinAdmin()" style="width:280px;margin-bottom:12px;">
+        <div><button class="btn btn-primary" onclick="joinAdmin()">Anmelden</button></div>
+      </div>
+    </div>
+  `;
+}
+
+function joinTeam() {
+  const name = document.getElementById('team-name-input').value.trim();
+  if (!name) { showNotification('Bitte Teamnamen eingeben!', 'error'); return; }
+  teamName = name;
+  send({ action: 'join_team', teamName: name });
+}
+
+function joinAdmin() {
+  const pw = document.getElementById('admin-password').value;
+  send({ action: 'join_admin', password: pw });
+}
+
+function toggleAdminLogin() {
+  const el = document.getElementById('admin-login');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el.style.display === 'block') document.getElementById('admin-password').focus();
+}
+
+function logout() {
+  role = null; teamName = ''; gameData = null;
+  sessionStorage.removeItem('traderiq_role');
+  sessionStorage.removeItem('traderiq_teamName');
+  render();
+}
+
+// ====== ADMIN VIEW ======
+function renderAdminView() {
+  if (!gameData) return '<div class="mode-selector"><p>Lade...</p></div>';
+  const d = gameData;
+  const round = d.currentRound;
+  const prices = {};
+  ['A','B','C'].forEach(s => { prices[s] = d.stockPrices[s][d.stockPrices[s].length - 1]; });
+  const lastDice = d.diceHistory[d.diceHistory.length - 1];
+
+  return `
+    <div class="header">
+      <div class="header-left">
+        <span class="header-logo">${logoHTML('logo-svg logo-svg-header')}</span>
+        <span class="header-badge">SPIELLEITER</span>
+        <span style="font-size:0.8rem;color:var(--text-muted);">${Object.keys(d.teams || {}).length} Teams</span>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:2rem;font-weight:900;line-height:1;">${round < d.maxRounds ? 'Runde ' + (round + 1) : 'ENDE'}</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);">von ${d.maxRounds} Runden</div>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-outline" onclick="logout()">← Zurück</button>
+        <button class="btn btn-outline" onclick="if(confirm('Spiel wirklich zurücksetzen?'))send({action:'reset_game'})">🔄 Reset</button>
+      </div>
+    </div>
+
+    <div class="main-content fade-in">
+      <div class="stock-prices section">
+        ${['A','B','C'].map(s => {
+          const price = prices[s];
+          const prevPrice = d.stockPrices[s].length > 1 ? d.stockPrices[s][d.stockPrices[s].length - 2] : price;
+          const change = price - prevPrice;
+          const changePct = prevPrice > 0 ? (change / prevPrice * 100) : 0;
+          const cls = change > 0 ? 'positive' : change < 0 ? 'negative' : '';
+          return `
+            <div class="stock-card">
+              <div class="stock-name">${STOCKS[s].name}</div>
+              <div class="stock-price" style="color:${STOCKS[s].color}">${formatCurrency(price)}</div>
+              <div class="stock-change ${cls}">
+                ${change >= 0 ? '+' : ''}${formatCurrency(change)} (${change >= 0 ? '+' : ''}${changePct.toFixed(1)}%)
+              </div>
+              <div class="stock-beta">Beta: ${STOCKS[s].beta} | Volatilität: ±${STOCKS[s].beta * 3}</div>
+              <div style="height:120px;position:relative;"><canvas id="chart-${s}"></canvas></div>
+            </div>`;
+        }).join('')}
+      </div>
+
+      <div class="grid-2 section">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">🎲 Würfel</span>
+          </div>
+          <div class="dice-section">
+            <div class="dice-container">
+              ${['A','B','C'].map(s => {
+                const dieVal = lastDice ? lastDice[s] : '?';
+                const change = lastDice ? diceToChange(lastDice[s], STOCKS[s].beta) : 0;
+                const cls = change > 0 ? 'positive' : change < 0 ? 'negative' : '';
+                return `
+                  <div class="die-wrapper">
+                    <div class="die-label">${STOCKS[s].name}</div>
+                    <div class="die">${dieVal}</div>
+                    <div class="die-change ${cls}">${lastDice ? (change >= 0 ? '+' : '') + '$' + change : '-'}</div>
+                  </div>`;
+              }).join('')}
+            </div>
+            ${round >= d.maxRounds ? `
+              <button class="btn btn-large" style="width:100%;background:var(--gold);color:#000;font-weight:800;" onclick="if(confirm('Spiel beenden?'))send({action:'end_game'})">
+                🏁 Spiel beenden
+              </button>
+            ` : `
+              <button class="btn btn-primary btn-large" onclick="send({action:'roll_dice'})" style="width:100%;">
+                🎲 Würfeln – Runde ${round + 1} von ${d.maxRounds}
+              </button>
+            `}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">🏆 Leaderboard</span>
+            <span style="color:var(--text-muted);font-size:0.8rem;">Live</span>
+          </div>
+          ${renderLeaderboard(d.leaderboard)}
+        </div>
+      </div>
+
+      <div class="card section">
+        <div class="card-header"><span class="card-title">📋 Runden-Verlauf</span></div>
+        ${d.diceHistory.length === 0 ?
+          '<div class="empty-state"><div class="empty-icon">🎲</div><p>Noch keine Runden gespielt</p></div>' :
+          `<div style="overflow-x:auto;">
+            <table class="data-table">
+              <tr><th>Runde</th><th>🎲 A</th><th>🎲 B</th><th>🎲 C</th><th>Aktie A</th><th>Aktie B</th><th>Aktie C</th></tr>
+              <tr><td>Start</td><td>-</td><td>-</td><td>-</td><td><strong>$100</strong></td><td><strong>$100</strong></td><td><strong>$100</strong></td></tr>
+              ${d.diceHistory.map((dice, i) => `
+                <tr>
+                  <td><strong>R${i+1}</strong></td>
+                  <td>${dice.A}</td><td>${dice.B}</td><td>${dice.C}</td>
+                  ${['A','B','C'].map(s => {
+                    const price = d.stockPrices[s][i+1];
+                    const prev = d.stockPrices[s][i];
+                    const ch = price - prev;
+                    const cls = ch > 0 ? 'positive' : ch < 0 ? 'negative' : '';
+                    return `<td><strong>${formatCurrency(price)}</strong> <span class="${cls}" style="font-size:0.75rem;">(${ch >= 0 ? '+' : ''}${ch})</span></td>`;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </table>
+          </div>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+// ====== TEAM VIEW ======
+function renderTeamView() {
+  if (!gameData || !gameData.team) return '<div class="mode-selector"><p>Lade...</p></div>';
+  const d = gameData;
+  const t = d.team;
+  const round = d.currentRound;
+  const prices = d.prices;
+  const total = t.cash;
+  let depot = 0;
+  ['A','B','C'].forEach(s => { depot += t.positions[s] * prices[s]; });
+  const totalVal = depot + t.cash;
+  const changeFromStart = totalVal - 100000;
+  const cls = changeFromStart >= 0 ? 'positive' : 'negative';
+
+  return `
+    <div class="header">
+      <div class="header-left">
+        <span class="header-logo">${logoHTML('logo-svg logo-svg-header')}</span>
+        <span class="header-badge" style="background:var(--green);">${t.name}</span>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:1.8rem;font-weight:900;line-height:1;">Runde ${round < d.maxRounds ? round + 1 : d.maxRounds}</div>
+        <div style="font-size:0.7rem;color:var(--text-muted);">von ${d.maxRounds}</div>
+      </div>
+      <div class="header-right">
+        <div style="text-align:right;">
+          <div style="font-size:1.1rem;font-weight:800;">${formatCurrency(totalVal)}</div>
+          <div class="${cls}" style="font-size:0.75rem;font-weight:600;">
+            ${changeFromStart >= 0 ? '+' : ''}${formatCurrency(changeFromStart)}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-content fade-in">
+      <div class="stock-prices section">
+        ${['A','B','C'].map(s => {
+          const price = prices[s];
+          const prevPrice = d.stockPrices[s].length > 1 ? d.stockPrices[s][d.stockPrices[s].length - 2] : price;
+          const change = price - prevPrice;
+          const cls2 = change > 0 ? 'positive' : change < 0 ? 'negative' : '';
+          return `
+            <div class="stock-card">
+              <div class="stock-name">${STOCKS[s].name} ${t.positions[s] > 0 ? `<span class="position-badge">${t.positions[s]} Stk.</span>` : ''}</div>
+              <div class="stock-price" style="color:${STOCKS[s].color}">${formatCurrency(price)}</div>
+              <div class="stock-change ${cls2}">${change >= 0 ? '+' : ''}${formatCurrency(change)}</div>
+              <div style="height:120px;position:relative;"><canvas id="chart-${s}"></canvas></div>
+            </div>`;
+        }).join('')}
+      </div>
+
+      ${round === 0 ? `
+      <div class="card section" style="text-align:center;padding:20px;border-color:var(--green);background:rgba(16,185,129,0.05);">
+        <p style="color:var(--text-secondary);">🟢 Ihr könnt bereits handeln! Der Spielleiter würfelt gleich die erste Runde.</p>
+      </div>
+      ` : ''}
+
+      ${round >= d.maxRounds ? `
+      <div class="card section" style="text-align:center;padding:24px;border-color:var(--gold);background:rgba(251,191,36,0.08);">
+        <p style="font-size:1rem;margin-bottom:8px;">🏁 <strong>Alle ${d.maxRounds} Runden gespielt!</strong> Kein Handel mehr möglich. Der Spielleiter beendet das Spiel.</p>
+      </div>
+      ` : ''}
+
+      <div class="tabs section">
+        <button class="tab ${teamTab === 'portfolio' ? 'active' : ''}" onclick="teamTab='portfolio';render()">💼 Portfolio</button>
+        <button class="tab ${teamTab === 'trade' ? 'active' : ''}" onclick="teamTab='trade';render()">💹 Handeln</button>
+        <button class="tab ${teamTab === 'history' ? 'active' : ''}" onclick="teamTab='history';render()">📜 Verlauf</button>
+      </div>
+
+      ${teamTab === 'portfolio' ? renderPortfolioTab(prices, depot, t) : ''}
+      ${teamTab === 'trade' ? renderTradeTab(prices, t) : ''}
+      ${teamTab === 'history' ? renderHistoryTab(t) : ''}
+    </div>
+  `;
+}
+
+function renderPortfolioTab(prices, depot, t) {
+  const totalVal = depot + t.cash;
+  const changeFromStart = totalVal - 100000;
+  return `
+    <div class="grid-3 section">
+      <div class="card"><div style="text-align:center;"><div class="stat-label">Depotwert</div><div class="stat-value">${formatCurrency(depot)}</div></div></div>
+      <div class="card"><div style="text-align:center;">
+        <div class="stat-label">Barmittel</div><div class="stat-value">${formatCurrency(t.cash)}</div>
+        ${(t.margin||0) > 0 ? `<div style="font-size:0.7rem;color:var(--yellow);margin-top:4px;">🔒 Margin: ${formatCurrency(t.margin)} blockiert</div>
+        <div style="font-size:0.7rem;color:var(--text-muted);">Frei: ${formatCurrency(t.cash - (t.margin||0))}</div>` : ''}
+      </div></div>
+      <div class="card"><div style="text-align:center;"><div class="stat-label">Gewinn/Verlust</div><div class="stat-value ${changeFromStart >= 0 ? 'positive' : 'negative'}">${changeFromStart >= 0 ? '+' : ''}${formatCurrency(changeFromStart)}</div></div></div>
+    </div>
+
+    ${['A','B','C'].some(s => t.positions[s] > 0) ? `
+    <div class="card section">
+      <div class="card-header"><span class="card-title">📦 Positionen</span></div>
+      <table class="data-table">
+        <tr><th>Aktie</th><th>Stück</th><th>Kurs</th><th>Wert</th></tr>
+        ${['A','B','C'].filter(s => t.positions[s] > 0).map(s => `
+          <tr>
+            <td><strong style="color:${STOCKS[s].color}">${STOCKS[s].name}</strong></td>
+            <td>${t.positions[s]}</td>
+            <td>${formatCurrency(prices[s])}</td>
+            <td><strong>${formatCurrency(t.positions[s] * prices[s])}</strong></td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>
+    ` : ''}
+
+    ${t.options && t.options.length > 0 ? `
+    <div class="card section">
+      <div class="card-header"><span class="card-title">📋 Offene Optionen</span></div>
+      <table class="data-table">
+        <tr><th>Typ</th><th>Aktie</th><th>Strike</th><th>Kontrakte</th><th>Richtung</th></tr>
+        ${t.options.map(o => `
+          <tr>
+            <td>${o.type.toUpperCase()}</td>
+            <td style="color:${STOCKS[o.stock].color}">${STOCKS[o.stock].name}</td>
+            <td>${formatCurrency(o.strike)}</td>
+            <td>${o.quantity}</td>
+            <td>${o.direction === 'buy' ? '🟢 Long' : '🔴 Short'}</td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>
+    ` : ''}
+
+    <div class="card section">
+      <div class="card-header"><span class="card-title">🏆 Leaderboard</span></div>
+      ${renderLeaderboard(gameData.leaderboard)}
+    </div>
+
+    <div class="card section">
+      <div class="card-header"><span class="card-title">📊 Portfolio-Entwicklung</span></div>
+      <div style="height:200px;position:relative;"><canvas id="chart-portfolio"></canvas></div>
+    </div>
+  `;
+}
+
+function renderTradeTab(prices, t) {
+  const currentPrice = prices[orderForm.stock];
+  const remaining = gameData.maxRounds - gameData.currentRound;
+  const availableCash = t.cash - (t.margin || 0);
+
+  if (remaining <= 0) {
+    return `<div class="card section" style="text-align:center;padding:40px;">
+      <div style="font-size:2rem;margin-bottom:12px;">🏁</div>
+      <p style="font-size:1rem;color:var(--text-secondary);">Alle ${gameData.maxRounds} Runden gespielt – kein Handel mehr möglich.</p>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-top:8px;">Wartet auf den Spielleiter, der das Spiel beendet.</p>
+    </div>`;
+  }
+
+  return `
+    <div class="grid-2 section">
+      <div class="card">
+        <div class="card-header"><span class="card-title">💹 Order aufgeben</span></div>
+        <div>
+          <div class="form-group">
+            <label>Instrument</label>
+            <select onchange="orderForm.type=this.value;render()">
+              <option value="stock" ${orderForm.type==='stock'?'selected':''}>Aktie</option>
+              <option value="option" ${orderForm.type==='option'?'selected':''}>Option</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Aktie</label>
+            <select onchange="orderForm.stock=this.value;orderForm.strike=null;render()">
+              ${['A','B','C'].map(s => `<option value="${s}" ${orderForm.stock===s?'selected':''}>${STOCKS[s].name} - ${formatCurrency(prices[s])}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Richtung</label>
+            <select onchange="orderForm.direction=this.value;render()">
+              <option value="buy" ${orderForm.direction==='buy'?'selected':''}>🟢 Kaufen</option>
+              <option value="sell" ${orderForm.direction==='sell'?'selected':''}>🔴 Verkaufen${orderForm.type==='option'?' (Margin!)':''}</option>
+            </select>
+          </div>
+          ${orderForm.type === 'option' ? `
+            <div class="form-group">
+              <label>Optionstyp</label>
+              <select onchange="orderForm.optionType=this.value;render()">
+                <option value="call" ${orderForm.optionType==='call'?'selected':''}>Call</option>
+                <option value="put" ${orderForm.optionType==='put'?'selected':''}>Put</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Strike</label>
+              <select id="strike-select" onchange="orderForm.strike=this.value?parseFloat(this.value):null;render()">
+                <option value="" ${orderForm.strike===null?'selected':''}>— Strike wählen —</option>
+                ${generateOptionChain(currentPrice, STOCKS[orderForm.stock].beta, remaining)
+                  .map(o => `<option value="${o.strike}" ${orderForm.strike===o.strike?'selected':''}>${formatCurrency(o.strike)} ${o.strike === currentPrice ? '(ATM)' : o.strike > currentPrice ? '(OTM Call / ITM Put)' : '(ITM Call / OTM Put)'}</option>`)
+                  .join('')}
+              </select>
+              ${(() => {
+                const chain = generateOptionChain(currentPrice, STOCKS[orderForm.stock].beta, remaining);
+                const sel = orderForm.strike;
+                const row = sel ? chain.find(c => c.strike === sel) : null;
+                if (!row) return '';
+                return `<div style="margin-top:6px;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;font-size:0.8rem;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="color:var(--text-muted);">Strike ${formatCurrency(row.strike)}</span>
+                    <span><span style="color:var(--green);font-weight:600;">Call $${formatNumber(row.call)}</span> <span style="color:var(--text-muted);margin:0 6px;">|</span> <span style="color:var(--red);font-weight:600;">Put $${formatNumber(row.put)}</span></span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:0.75rem;color:var(--text-muted);">
+                    <span>Delta Call: ${row.callDelta.toFixed(3)}</span>
+                    <span>Delta Put: ${row.putDelta.toFixed(3)}</span>
+                  </div>
+                </div>`;
+              })()}
+            </div>
+            ${orderForm.direction === 'sell' ? `
+              <div style="padding:8px 12px;background:var(--yellow-bg);border:1px solid var(--yellow);border-radius:8px;font-size:0.75rem;color:var(--yellow);margin-bottom:8px;">
+                🔒 Margin: Beim Verkauf werden ${formatCurrency((orderForm.strike || 0) * orderForm.quantity * 100)} blockiert
+              </div>
+            ` : ''}
+          ` : ''}
+          <div class="form-group">
+            <label>Anzahl ${orderForm.type === 'option' ? '(Kontrakte à 100 Stk.)' : '(Pakete à 100 Aktien)'}</label>
+            <input type="number" min="1" step="1" value="${orderForm.quantity}" onchange="orderForm.quantity=Math.max(1,parseInt(this.value)||1)">
+          </div>
+          <div style="margin-top:4px;font-size:0.75rem;color:var(--text-muted);">Frei: ${formatCurrency(availableCash)}${(t.margin||0)>0?' ('+formatCurrency(t.margin)+' Margin blockiert)':''}</div>
+          <div style="margin-top:8px;">
+            <button class="btn btn-outline btn-large" style="width:100%;border-color:${orderForm.direction==='buy'?'var(--green)':'var(--red)'};color:${orderForm.direction==='buy'?'var(--green)':'var(--red)'};" onclick="submitOrder()">
+              ➕ ${orderForm.direction==='buy'?'Kauf':'Verkauf'} hinzufügen
+            </button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:12px;">
+          <div class="card-header">
+            <span class="card-title">📋 Trades Vorschau</span>
+            ${pendingTrades.length > 0 ? `<span style="background:var(--orange);color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;">${pendingTrades.length}</span>` : ''}
+          </div>
+          ${pendingTrades.length === 0 ? `
+            <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.85rem;">
+              Trades über das Formular hinzufügen.<br>Erst nach Bestätigung werden sie ausgeführt.
+            </div>
+          ` : `
+            ${pendingTrades.map((tr, i) => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:0.82rem;">
+                <div style="display:flex;align-items:center;gap:6px;flex:1;">
+                  <span class="trade-tag ${tr.direction}" style="font-size:0.65rem;padding:2px 5px;">${tr.direction==='buy'?'K':'V'}</span>
+                  <strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
+                  <span style="color:var(--text-muted);font-size:0.75rem;">${tr.tradeType==='stock' ? (tr.displayQty||tr.quantity/100)+' Pkt. ('+tr.quantity+' Stk.)' : tr.quantity+' '+tr.optionType.toUpperCase()+' @'+formatCurrency(tr.strike)}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <strong style="font-size:0.82rem;">${formatCurrency(tr.total)}</strong>
+                  <button onclick="removePendingTrade(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem;padding:0 4px;line-height:1;" title="Entfernen">✕</button>
+                </div>
+              </div>
+            `).join('')}
+            <div style="display:flex;justify-content:space-between;padding:10px 12px;font-size:0.85rem;font-weight:700;background:var(--bg-secondary);">
+              <span>Gesamt</span>
+              <span>${formatCurrency(pendingTrades.reduce((s,tr) => s + (tr.direction==='buy' ? tr.total : -tr.total), 0))}</span>
+            </div>
+            <div style="padding:12px;">
+              <button class="btn btn-success btn-large" style="width:100%;" onclick="confirmAllTrades()">
+                ✅ ${pendingTrades.length} Trade${pendingTrades.length>1?'s':''} bestätigen
+              </button>
+              <button class="btn btn-outline" style="width:100%;margin-top:6px;font-size:0.8rem;" onclick="pendingTrades=[];render()">
+                Alle verwerfen
+              </button>
+            </div>
+          `}
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:var(--text-secondary);font-size:0.85rem;">Barmittel</span><strong style="font-size:0.85rem;">${formatCurrency(t.cash)}</strong>
+            </div>
+            ${['A','B','C'].map(s => t.positions[s] > 0 ? `
+              <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                <span style="color:var(--text-secondary);font-size:0.85rem;">${STOCKS[s].name}</span><strong style="font-size:0.85rem;">${t.positions[s]} Stk.</strong>
+              </div>` : '').join('')}
+            ${(t.options||[]).filter(o => !o.settled).map(o => `
+              <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                <span style="color:var(--text-secondary);font-size:0.85rem;">${o.type.toUpperCase()} ${STOCKS[o.stock].name} @${formatCurrency(o.strike)}</span>
+                <strong style="font-size:0.85rem;color:var(--purple);">${o.quantity} Kontr.</strong>
+              </div>`).join('')}
+          </div>
+        </div>
+        ${renderRoundTrades(t)}
+      </div>
+    </div>
+
+    ${renderInlineOptionChains(prices)}
+  `;
+}
+
+function renderInlineOptionChains(prices) {
+  const remaining = gameData.maxRounds - gameData.currentRound;
+  return `
+    <div class="card section">
+      <div class="card-header"><span class="card-title">📊 Optionsketten – alle Aktien</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+        ${['A','B','C'].map(s => {
+          const currentPrice = prices[s];
+          const chain = generateOptionChain(currentPrice, STOCKS[s].beta, remaining);
+          return `<div style="background:var(--bg-secondary);border-radius:8px;padding:12px;">
+            <div style="text-align:center;margin-bottom:8px;">
+              <strong style="color:${STOCKS[s].color}">${STOCKS[s].name}</strong>
+              <span style="color:var(--text-muted);font-size:0.8rem;margin-left:6px;">${formatCurrency(currentPrice)}</span>
+            </div>
+            <table style="width:100%;font-size:0.75rem;border-collapse:collapse;">
+              <tr style="color:var(--text-muted);font-size:0.65rem;text-transform:uppercase;">
+                <td style="color:var(--green);padding:2px 4px;">Call</td>
+                <td style="color:var(--green);padding:2px 4px;">Δ</td>
+                <td style="text-align:center;padding:2px 4px;font-weight:700;">Strike</td>
+                <td style="color:var(--red);padding:2px 4px;">Δ</td>
+                <td style="color:var(--red);padding:2px 4px;text-align:right;">Put</td>
+              </tr>
+              ${chain.map(row => `
+                <tr style="border-top:1px solid rgba(42,53,72,0.3);cursor:pointer;" onclick="quickBuy('call','${s}',${row.strike},${row.call})">
+                  <td style="padding:4px;color:var(--green);font-weight:600;">$${formatNumber(row.call)}</td>
+                  <td style="padding:4px;color:var(--text-muted);font-size:0.7rem;">${row.callDelta.toFixed(2)}</td>
+                  <td style="text-align:center;padding:4px;font-weight:700;${row.isATM?'color:var(--yellow);':''}">${formatCurrency(row.strike)}</td>
+                  <td style="padding:4px;color:var(--text-muted);font-size:0.7rem;">${row.putDelta.toFixed(2)}</td>
+                  <td style="padding:4px;color:var(--red);font-weight:600;text-align:right;cursor:pointer;" onclick="event.stopPropagation();quickBuy('put','${s}',${row.strike},${row.put})">$${formatNumber(row.put)}</td>
+                </tr>
+              `).join('')}
+            </table>
+            <div style="text-align:center;font-size:0.65rem;color:var(--text-muted);margin-top:6px;">Klicke um zu handeln</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderRoundTrades(t) {
+  const currentRound = gameData.currentRound;
+  const roundTrades = (t.trades || []).filter(tr => tr.round === currentRound);
+  const displayRound = currentRound + 1;
+  if (roundTrades.length === 0) {
+    return `<div class="card" id="round-trades" style="margin-top:0;">
+      <div class="card-header"><span class="card-title">📝 Trades Runde ${displayRound}</span></div>
+      <div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.85rem;">Noch keine Trades in dieser Runde</div>
+    </div>`;
+  }
+  const totalSpent = roundTrades.reduce((sum, tr) => sum + (tr.direction === 'buy' ? tr.total : -tr.total), 0);
+  return `<div class="card" id="round-trades" style="margin-top:0;">
+    <div class="card-header">
+      <span class="card-title">📝 Trades Runde ${displayRound}</span>
+      <span style="color:var(--text-muted);font-size:0.8rem;">${roundTrades.length} Trade${roundTrades.length>1?'s':''}</span>
+    </div>
+    ${roundTrades.map((tr, i) => `
+      <div class="round-trade-row${i === roundTrades.length - 1 ? ' latest-trade' : ''}" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="trade-tag ${tr.direction}" style="font-size:0.7rem;padding:2px 6px;">${tr.direction==='buy'?'KAUF':'VERK.'}</span>
+          <span><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong></span>
+          <span style="color:var(--text-muted);">${tr.type==='stock' ? tr.quantity+' Stk.' : tr.quantity+' '+tr.optionType.toUpperCase()}</span>
+          ${tr.type==='option'?`<span style="color:var(--text-muted);font-size:0.75rem;">Strike ${formatCurrency(tr.strike)}</span>`:''}
+        </div>
+        <strong>${tr.direction==='buy'?'-':'+'} ${formatCurrency(tr.total)}</strong>
+      </div>
+    `).join('')}
+    <div style="display:flex;justify-content:space-between;padding:10px 12px;font-size:0.85rem;font-weight:700;background:var(--bg-secondary);border-radius:0 0 8px 8px;">
+      <span>Netto diese Runde</span>
+      <span class="${totalSpent > 0 ? 'negative' : 'positive'}">${totalSpent > 0 ? '-' : '+'}${formatCurrency(Math.abs(totalSpent))}</span>
+    </div>
+  </div>`;
+}
+
+function renderOrderPreview(prices) {
+  const price = prices[orderForm.stock];
+  const remaining = gameData.maxRounds - gameData.currentRound;
+  if (orderForm.type === 'stock') {
+    const shares = orderForm.quantity * 100;
+    const total = price * shares;
+    return `<div style="padding:16px;background:var(--bg-secondary);border-radius:8px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Instrument</span><strong>${STOCKS[orderForm.stock].name}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Kurs</span><strong>${formatCurrency(price)}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Anzahl</span><strong>${orderForm.quantity} Paket${orderForm.quantity > 1 ? 'e' : ''} (${shares} Stk.)</strong></div>
+      <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);"><span style="font-weight:600;">Gesamt</span><strong style="font-size:1.1rem;">${formatCurrency(total)}</strong></div>
+    </div>`;
+  } else {
+    const chain = generateOptionChain(price, STOCKS[orderForm.stock].beta, remaining);
+    const selectedStrike = orderForm.strike;
+    const option = chain.find(c => c.strike === selectedStrike);
+    const optPrice = option ? (orderForm.optionType === 'call' ? option.call : option.put) : 0;
+    const total = optPrice * orderForm.quantity * 100;
+    return `<div style="padding:16px;background:var(--bg-secondary);border-radius:8px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Option</span><strong>${orderForm.optionType.toUpperCase()} ${STOCKS[orderForm.stock].name}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Strike</span><strong>${selectedStrike ? formatCurrency(selectedStrike) : '-'}</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Prämie</span><strong>${formatCurrency(optPrice)} / Stk.</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--text-secondary);">Kontrakte</span><strong>${orderForm.quantity} (= ${orderForm.quantity*100} Stk.)</strong></div>
+      <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);"><span style="font-weight:600;">Gesamt</span><strong style="font-size:1.1rem;">${formatCurrency(total)}</strong></div>
+    </div>`;
+  }
+}
+
+function submitOrder() {
+  const prices = gameData.prices;
+  const price = prices[orderForm.stock];
+  if (orderForm.type === 'stock') {
+    if (!orderForm.quantity || orderForm.quantity < 1) {
+      showNotification('Bitte mindestens 1 Paket wählen!', 'error'); return;
+    }
+    const shares = orderForm.quantity * 100;
+    pendingTrades.push({
+      tradeType: 'stock', stock: orderForm.stock, quantity: shares,
+      direction: orderForm.direction, price, total: price * shares,
+      displayQty: orderForm.quantity
+    });
+  } else {
+    const remaining = gameData.maxRounds - gameData.currentRound;
+    const chain = generateOptionChain(price, STOCKS[orderForm.stock].beta, remaining);
+    const strike = orderForm.strike;
+    if (!strike) { showNotification('Bitte zuerst einen Strike wählen!', 'error'); return; }
+    const option = chain.find(c => c.strike === strike);
+    if (!option) { showNotification('Ungültiger Strike!', 'error'); return; }
+    const optPrice = orderForm.optionType === 'call' ? option.call : option.put;
+    pendingTrades.push({
+      tradeType: 'option', stock: orderForm.stock, quantity: orderForm.quantity,
+      direction: orderForm.direction, optionType: orderForm.optionType,
+      strike, premium: optPrice, price: optPrice, total: optPrice * orderForm.quantity * 100
+    });
+  }
+  showNotification(`➕ Trade hinzugefügt — ${pendingTrades.length} in Vorschau`);
+  render();
+}
+
+function removePendingTrade(index) {
+  pendingTrades.splice(index, 1);
+  render();
+}
+
+function confirmAllTrades() {
+  if (pendingTrades.length === 0) { showNotification('Keine Trades in der Vorschau!', 'error'); return; }
+  pendingTrades.forEach(tr => {
+    if (tr.tradeType === 'stock') {
+      send({ action: 'trade', tradeType: 'stock', stock: tr.stock, quantity: tr.quantity, direction: tr.direction });
+    } else {
+      send({ action: 'trade', tradeType: 'option', stock: tr.stock, quantity: tr.quantity, direction: tr.direction, optionType: tr.optionType, strike: tr.strike, premium: tr.premium });
+    }
+  });
+  const count = pendingTrades.length;
+  pendingTrades = [];
+  showNotification(`✅ ${count} Trade${count > 1 ? 's' : ''} bestätigt und gesendet!`);
+  render();
+}
+
+function quickBuy(type, stock, strike, price) {
+  orderForm.type = 'option'; orderForm.stock = stock; orderForm.optionType = type;
+  orderForm.strike = strike; orderForm.direction = 'buy'; orderForm.quantity = 1;
+  teamTab = 'trade'; render();
+  // Scroll to order form
+  setTimeout(() => { const el = document.querySelector('.card-title'); if(el) el.scrollIntoView({behavior:'smooth'}); }, 100);
+}
+
+function renderHistoryTab(t) {
+  if (!t.trades || t.trades.length === 0) {
+    return '<div class="card section"><div class="empty-state"><div class="empty-icon">📝</div><p>Noch keine Trades</p></div></div>';
+  }
+
+  function getResultCell(tr) {
+    if (tr.type === 'option') {
+      if (tr.settled) {
+        const plCls = tr.realizedPL >= 0 ? 'positive' : 'negative';
+        const statusText = tr.executed
+          ? `Ausgeübt R${tr.settleRound}`
+          : `Verfallen R${tr.settleRound}`;
+        return `<td>
+          <span style="font-size:0.75rem;color:var(--text-muted);">${statusText}</span><br>
+          <strong class="${plCls}">${tr.realizedPL>=0?'+':''}${formatCurrency(tr.realizedPL)}</strong>
+        </td>`;
+      } else {
+        return `<td><span style="font-size:0.75rem;color:var(--yellow);">⏳ Offen</span></td>`;
+      }
+    } else {
+      // Stock trade — show current value of the position change
+      const prices = gameData.prices || {};
+      const currentPrice = prices[tr.stock];
+      if (currentPrice && tr.direction === 'buy') {
+        const currentVal = tr.quantity * currentPrice;
+        const pl = currentVal - tr.total;
+        const plCls = pl >= 0 ? 'positive' : 'negative';
+        return `<td><span class="${plCls}" style="font-size:0.85rem;">${pl>=0?'+':''}${formatCurrency(pl)}</span></td>`;
+      } else if (currentPrice && tr.direction === 'sell') {
+        return `<td><span style="font-size:0.75rem;color:var(--text-muted);">Realisiert</span></td>`;
+      }
+      return `<td>-</td>`;
+    }
+  }
+
+  return `
+    <div class="card section">
+      <div class="card-header"><span class="card-title">📝 Trade-Verlauf</span><span style="color:var(--text-muted);font-size:0.8rem;">${t.trades.length} Trades</span></div>
+      <table class="data-table">
+        <tr><th>Runde</th><th>Typ</th><th>Instrument</th><th>Richtung</th><th>Anzahl</th><th>Preis</th><th>Gesamt</th><th>Ergebnis</th></tr>
+        ${[...t.trades].reverse().map(tr => {
+          if (tr.type === 'exercise') {
+            const clsEx = tr.shareEffect > 0 ? 'positive' : 'negative';
+            return `<tr style="background:rgba(139,92,246,0.08);">
+              <td>R${tr.round}</td>
+              <td>⚡ Ausübung</td>
+              <td><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
+                <br><span style="font-size:0.75rem;color:var(--text-muted)">${tr.optionType.toUpperCase()} Strike: ${formatCurrency(tr.strike)}</span></td>
+              <td><span class="trade-tag ${tr.shareEffect > 0 ? 'buy' : 'sell'}">${tr.shareEffect > 0 ? 'EINBUCH.' : 'AUSBUCH.'}</span></td>
+              <td>${Math.abs(tr.shareEffect)} Stk.</td>
+              <td>${formatCurrency(tr.strike)}</td>
+              <td><strong class="${tr.cashEffect >= 0 ? 'positive' : 'negative'}">${tr.cashEffect >= 0 ? '+' : ''}${formatCurrency(tr.cashEffect)}</strong></td>
+              <td><span style="font-size:0.75rem;color:var(--purple);">${tr.shareEffect > 0 ? '+' : ''}${tr.shareEffect} Aktien</span></td>
+            </tr>`;
+          }
+          return `<tr>
+            <td>R${tr.round}</td>
+            <td>${tr.type==='stock'?'📈 Aktie':`📋 ${tr.optionType.toUpperCase()}`}</td>
+            <td><strong style="color:${STOCKS[tr.stock].color}">${STOCKS[tr.stock].name}</strong>
+              ${tr.type==='option'?`<br><span style="font-size:0.75rem;color:var(--text-muted)">Strike: ${formatCurrency(tr.strike)}</span>`:''}</td>
+            <td><span class="trade-tag ${tr.direction}">${tr.direction==='buy'?'KAUF':'VERKAUF'}</span></td>
+            <td>${tr.quantity}${tr.type==='option'?' Kontr.':' Stk.'}</td>
+            <td>${formatCurrency(tr.price)}</td>
+            <td><strong>${formatCurrency(tr.total)}</strong></td>
+            ${getResultCell(tr)}
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+  `;
+}
+
+// ====== LEADERBOARD ======
+function renderLeaderboard(lb) {
+  if (!lb || lb.length === 0) {
+    return '<div class="empty-state"><div class="empty-icon">🏆</div><p>Noch keine Teams beigetreten</p></div>';
+  }
+  const maxVal = lb[0]?.value || 1;
+  return lb.map((team, i) => {
+    const rankClass = i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':'rank-other';
+    const barColor = i===0?'var(--gold)':i===1?'var(--silver)':i===2?'var(--bronze)':'var(--accent)';
+    const pct = (team.value / maxVal * 100).toFixed(0);
+    const changeFromStart = team.value - 100000;
+    const cls = changeFromStart >= 0 ? 'positive' : 'negative';
+    return `
+      <div class="leaderboard-item">
+        <div class="leaderboard-rank ${rankClass}">${i+1}</div>
+        <div class="leaderboard-name">${team.name}</div>
+        <div class="leaderboard-bar"><div class="leaderboard-bar-fill" style="width:${pct}%;background:${barColor};"></div></div>
+        <div>
+          <div class="leaderboard-value">${formatCurrency(team.value)}</div>
+          <div class="${cls}" style="font-size:0.75rem;text-align:right;">${changeFromStart >= 0?'+':''}${formatCurrency(changeFromStart)}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ====== END SCREEN ======
+function renderEndScreen() {
+  if (!gameData) return '<div class="mode-selector"><p>Lade Ergebnisse...</p></div>';
+  const d = gameData;
+  const prices = {};
+  ['A','B','C'].forEach(s => {
+    prices[s] = d.stockPrices && d.stockPrices[s] ? d.stockPrices[s][d.stockPrices[s].length-1] : 100;
+  });
+
+  let teamSection = '';
+  if (role === 'team' && d.team) {
+    const t = d.team;
+    let depot = 0;
+    ['A','B','C'].forEach(s => { depot += (t.positions[s] || 0) * prices[s]; });
+    const totalVal = depot + t.cash;
+    const change = totalVal - 100000;
+    const changePct = (change / 100000 * 100).toFixed(1);
+    const cls = change >= 0 ? 'positive' : 'negative';
+    teamSection = `
+      <p style="color:var(--text-secondary);font-size:1rem;">Team <strong>${t.name}</strong> – Endstand:</p>
+      <div style="font-size:2.5rem;font-weight:900;margin:16px 0;" class="${cls}">${formatCurrency(totalVal)}</div>
+      <div class="${cls}" style="font-size:1.1rem;font-weight:600;">${change>=0?'+':''}${formatCurrency(change)} (${change>=0?'+':''}${changePct}%)</div>
+    `;
+  }
+
+  return `
+    <div class="header">
+      <div class="header-left">
+        <span class="header-logo">${logoHTML('logo-svg logo-svg-header')}</span>
+        <span class="header-badge" style="background:var(--gold);color:#000;">${role==='admin'?'SPIELLEITER':(d.team?.name||'')}</span>
+        <span class="header-round" style="color:var(--gold);font-weight:700;">SPIEL BEENDET</span>
+      </div>
+      <div class="header-right">
+        ${role==='admin'?`<button class="btn btn-outline" onclick="logout()">← Zurück</button>`:''}
+        ${role==='admin'?`<button class="btn btn-outline" onclick="if(confirm('Neues Spiel starten?'))send({action:'reset_game'})">🔄 Neues Spiel</button>`:''}
+      </div>
+    </div>
+    <div class="main-content fade-in">
+      <div class="card section" style="text-align:center;padding:40px;border-color:var(--gold);background:rgba(251,191,36,0.05);">
+        <div style="font-size:3rem;margin-bottom:12px;">🏁</div>
+        <h2 style="font-size:1.8rem;font-weight:900;margin-bottom:8px;">Spiel beendet nach ${d.maxRounds} Runden!</h2>
+        ${teamSection}
+      </div>
+
+      <div class="card section">
+        <div class="card-header"><span class="card-title">📈 Aktienkurse – Entwicklung</span></div>
+        <div class="grid-3">
+          ${['A','B','C'].map(s => {
+            const endPrice = prices[s]; const change = endPrice - 100;
+            const cls = change >= 0 ? 'positive' : 'negative';
+            return `<div class="card" style="text-align:center;">
+              <div style="font-size:0.85rem;color:var(--text-secondary);">${STOCKS[s].name}</div>
+              <div style="font-size:1.4rem;font-weight:800;color:${STOCKS[s].color};">${formatCurrency(endPrice)}</div>
+              <div class="${cls}" style="font-size:0.85rem;font-weight:600;">${change>=0?'+':''}${formatCurrency(change)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:16px;">
+          ${['A','B','C'].map(s => `<div style="position:relative;height:150px;margin-bottom:8px;overflow:hidden;"><canvas id="chart-${s}" style="height:150px;max-height:150px;"></canvas></div>`).join('')}
+        </div>
+      </div>
+
+      <div class="card section" style="border-color:var(--gold);">
+        <div class="card-header"><span class="card-title">🏆 Endergebnis – Leaderboard</span></div>
+        ${renderLeaderboard(d.leaderboard)}
+      </div>
+    </div>
+  `;
+}
+
+// ====== CHARTS ======
+function initCharts() {
+  Object.values(charts).forEach(c => { try { if (c && c.destroy) c.destroy(); } catch(e) {} });
+  charts = {};
+  try {
+    ['A','B','C'].forEach(s => {
+      const canvas = document.getElementById(`chart-${s}`);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const priceData = gameData.stockPrices[s];
+      const labels = priceData.map((_, i) => i===0?'Start':`R${i}`);
+      charts[s] = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ data: priceData, borderColor: STOCKS[s].color, backgroundColor: `rgba(${STOCKS[s].colorRgb}, 0.1)`, fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: STOCKS[s].color, borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: true, grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 }, callback: v => '$' + v } } }, interaction: { intersect: false, mode: 'index' } }
+      });
+    });
+
+    const portfolioCanvas = document.getElementById('chart-portfolio');
+    if (portfolioCanvas && gameData.team) {
+      const ctx = portfolioCanvas.getContext('2d');
+      const t = gameData.team;
+      const labels = t.totalHistory.map((_, i) => i===0?'Start':`R${i}`);
+      charts.portfolio = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [
+          { label: 'Gesamt', data: t.totalHistory, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, borderWidth: 2 },
+          { label: 'Barmittel', data: t.cashHistory, borderColor: '#10b981', borderDash: [5,5], tension: 0.3, borderWidth: 1.5, pointRadius: 0 }
+        ] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 } } } }, scales: { x: { grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 } } }, y: { grid: { color: 'rgba(42,53,72,0.3)' }, ticks: { color: '#6b7280', font: { size: 10 }, callback: v => '$'+(v/1000)+'k' } } } }
+      });
+    }
+  } catch(e) {
+    console.warn('Chart init error (non-critical):', e);
+  }
+}
+
+// ====== START ======
+connect();
+render();
+</script>
+</body>
+</html>
