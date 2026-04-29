@@ -438,6 +438,7 @@ function handleMessage(ws, msg) {
       } else if (msg.tradeType === 'option') {
         const premium = msg.premium * msg.quantity * 100;
         const availableCash = team.cash - team.margin;
+        let marginRequired = 0;
 
         if (msg.direction === 'buy') {
           if (premium > availableCash) {
@@ -448,7 +449,7 @@ function handleMessage(ws, msg) {
         } else {
           // Selling (writing) options: require margin = strike × quantity × 100
           // Exception: Covered Call — if selling a call and team owns enough shares, margin = 0
-          let marginRequired = msg.strike * msg.quantity * 100;
+          marginRequired = msg.strike * msg.quantity * 100;
           const sharesNeeded = msg.quantity * 100;
           if (msg.optionType === 'call' && team.positions[msg.stock] >= sharesNeeded) {
             marginRequired = 0; // Covered Call — no margin needed
@@ -469,7 +470,7 @@ function handleMessage(ws, msg) {
           premium: msg.premium,
           direction: msg.direction,
           round: gameState.currentRound,
-          marginBlocked: msg.direction === 'sell' ? marginRequired : 0
+          marginBlocked: marginRequired
         });
 
         team.trades.push({
